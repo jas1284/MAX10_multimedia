@@ -12,6 +12,7 @@ module ZFsoc (
 	led_wire_export,
 	reset_reset_n,
 	sdram_clk_clk,
+	sdram_clk_100_clk,
 	sdram_wire_addr,
 	sdram_wire_ba,
 	sdram_wire_cas_n,
@@ -35,6 +36,7 @@ module ZFsoc (
 	output	[5:0]	led_wire_export;
 	input		reset_reset_n;
 	output		sdram_clk_clk;
+	output		sdram_clk_100_clk;
 	output	[12:0]	sdram_wire_addr;
 	output	[1:0]	sdram_wire_ba;
 	output		sdram_wire_cas_n;

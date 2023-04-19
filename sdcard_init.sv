@@ -23,11 +23,11 @@ module sdcard_init (
 	output logic [15:0] ram_data,
 	input  logic ram_op_begun,   //acknowledge from RAM to move to next word
 	output logic ram_status_light,
-	output logic [3:0] hex_out_4,
-	output logic [3:0] hex_out_3,
-	output logic [3:0] hex_out_2,
-	output logic [3:0] hex_out_1,
-	output logic [3:0] hex_out_0,
+	// output logic [3:0] hex_out_4,
+	// output logic [3:0] hex_out_3,
+	// output logic [3:0] hex_out_2,
+	// output logic [3:0] hex_out_1,
+	// output logic [3:0] hex_out_0,
 	output logic ram_init_error, //error initializing
 	output logic ram_init_done,  //done with reading all MAX_RAM_ADDRESS words
 	output logic cs_bo, //SD card pins (also make sure to disable USB CS if using DE10-Lite)
@@ -88,11 +88,11 @@ begin
 		state_r <= state_x;
 		data_r <= data_x;
 		ram_addr_r <= ram_addr_x;
-		hex_out_4 <= ram_addr_x[19:16];
-		hex_out_3 <= ram_addr_x[15:12];
-		hex_out_2 <= ram_addr_x[11:8];
-		hex_out_1 <= ram_addr_x[7:4];
-		hex_out_0 <= ram_addr_x[3:0];
+//		hex_out_4 <= ram_addr_x[19:16];
+//		hex_out_3 <= ram_addr_x[15:12];
+//		hex_out_2 <= ram_addr_x[11:8];
+//		hex_out_1 <= ram_addr_x[7:4];
+//		hex_out_0 <= ram_addr_x[3:0];
 	end
 end
 

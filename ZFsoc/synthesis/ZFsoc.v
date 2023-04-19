@@ -16,6 +16,7 @@ module ZFsoc (
 		output wire [5:0]  led_wire_export,           //      led_wire.export
 		input  wire        reset_reset_n,             //         reset.reset_n
 		output wire        sdram_clk_clk,             //     sdram_clk.clk
+		output wire        sdram_clk_100_clk,         // sdram_clk_100.clk
 		output wire [12:0] sdram_wire_addr,           //    sdram_wire.addr
 		output wire [1:0]  sdram_wire_ba,             //              .ba
 		output wire        sdram_wire_cas_n,          //              .cas_n
@@ -209,9 +210,9 @@ module ZFsoc (
 		.writedata          (mm_interconnect_1_sdram_pll_pll_slave_writedata), //                      .writedata
 		.c0                 (sdram_pll_c0_clk),                                //                    c0.clk
 		.c1                 (sdram_clk_clk),                                   //                    c1.clk
+		.c2                 (sdram_clk_100_clk),                               //                    c2.clk
 		.scandone           (),                                                //           (terminated)
 		.scandataout        (),                                                //           (terminated)
-		.c2                 (),                                                //           (terminated)
 		.c3                 (),                                                //           (terminated)
 		.c4                 (),                                                //           (terminated)
 		.areset             (1'b0),                                            //           (terminated)

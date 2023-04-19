@@ -12,6 +12,7 @@
 			led_wire_export           : out   std_logic_vector(5 downto 0);                     -- export
 			reset_reset_n             : in    std_logic                     := 'X';             -- reset_n
 			sdram_clk_clk             : out   std_logic;                                        -- clk
+			sdram_clk_100_clk         : out   std_logic;                                        -- clk
 			sdram_wire_addr           : out   std_logic_vector(12 downto 0);                    -- addr
 			sdram_wire_ba             : out   std_logic_vector(1 downto 0);                     -- ba
 			sdram_wire_cas_n          : out   std_logic;                                        -- cas_n

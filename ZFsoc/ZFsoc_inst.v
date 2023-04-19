@@ -11,6 +11,7 @@
 		.led_wire_export           (<connected-to-led_wire_export>),           //      led_wire.export
 		.reset_reset_n             (<connected-to-reset_reset_n>),             //         reset.reset_n
 		.sdram_clk_clk             (<connected-to-sdram_clk_clk>),             //     sdram_clk.clk
+		.sdram_clk_100_clk         (<connected-to-sdram_clk_100_clk>),         // sdram_clk_100.clk
 		.sdram_wire_addr           (<connected-to-sdram_wire_addr>),           //    sdram_wire.addr
 		.sdram_wire_ba             (<connected-to-sdram_wire_ba>),             //              .ba
 		.sdram_wire_cas_n          (<connected-to-sdram_wire_cas_n>),          //              .cas_n
