@@ -84,7 +84,7 @@ begin
 		ram_status_light <= 0;
 	end
 	else begin
-		ram_status_light <= ram_status_light^1;
+		ram_status_light <= ram_status_light^1'b1;
 		state_r <= state_x;
 		data_r <= data_x;
 		ram_addr_r <= ram_addr_x;

@@ -58,15 +58,15 @@ assign hex_out_2 = BITQUEUE[35:32];
 assign hex_out_1 = BITQUEUE[31:28];
 assign hex_out_0 = BITQUEUE[27:24];
 
-logic slowclk;
+// logic slowclk;
 
-always_ff @ (posedge clk50 or posedge reset)
-begin
-    if(reset)
-        slowclk <= 1'b0;
-    else
-        slowclk <= ~slowclk;
-end
+// always_ff @ (posedge clk50 or posedge reset)
+// begin
+//     if(reset)
+//         slowclk <= 1'b0;
+//     else
+//         slowclk <= ~slowclk;
+// end
 
 always_ff @ (posedge clk50 or posedge reset)
 begin
@@ -262,29 +262,61 @@ enum logic [10:0]
     piclayer_readPSC,
     piclayer_skipPSC,
     piclayer_readTR,
+    piclayer_skipTR,
     piclayer_readPTYPE,
+    piclayer_skipPTYPE,
+    piclayer_readGBSC,
+    piclayer_skipGBSC,
+    piclayer_readGN,
+    piclayer_skipGN,
+    piclayer_readGQUANT,
+    piclayer_skipGQUANT,
+    piclayer_readMBA,
+    piclayer_skipMBA,
+    piclayer_readMTYPE,
+    piclayer_skipMTYPE,
+    piclayer_readMQUANT,
+    piclayer_skipMQUANT,
+    piclayer_readMVD,
+    piclayer_skipMVD,
+    piclayer_readCBP,
+    piclayer_skipCBP,
+    piclayer_readTCOEFF,
+    piclayer_skipTCOEFF,
     goblayer,
     mblayer
 }   cur_layer, next_layer;
 logic [5:0] countdown, countdown_next;
 logic shiftsig, shiftsig_next;
 logic [4:0] saved_TR, next_TR;
+logic [3:0] saved_GN, next_GN;
+logic [4:0] saved_GQUANT, next_GQUANT;
+logic [5:0] saved_MBA, next_MBA;
+logic [3:0] saved_MTYPE_vec, next_MTYPE_vec;
 
 // FF Logic for the big-bloody-state-machine!
 always_ff @( posedge clk50 or posedge reset ) begin
     if(reset) begin
+        saved_MTYPE_vec <= 0;
+        saved_MBA <= 0;
+        saved_GQUANT <= 0;
+        saved_GN <= 0;
         saved_TR <= 0;
         cur_layer <= piclayer_readPSC;  // first thing is to always read PSC.
         countdown <= 0;
     end
     else if (Q_RDY) begin   // Only run if the queue is ready-to-go!
+        saved_MTYPE_vec <= next_MTYPE_vec;
+        saved_MBA <= next_MBA;
+        saved_GQUANT <= next_GQUANT;
+        saved_GN <= next_GN;
         saved_TR <= next_TR;
         cur_layer <= next_layer;
         countdown <= countdown_next;
     end
 end
 
-// Need to run the shift signal on a slower clock...? lol oops
+// Need to run the shift signal on a slower clock...? lol oops no we don't
 always_ff @(posedge clk50 or posedge reset) begin
     if(reset)
         shiftsig <= 0;
@@ -293,20 +325,46 @@ always_ff @(posedge clk50 or posedge reset) begin
 end
 
 always_comb begin
+    // default values... part of the 2-always M.O.
     status_2 = 1'b0;
     next_layer = cur_layer;
     countdown_next = countdown;
     shiftsig_next = shiftsig;
     next_TR = saved_TR;
+    next_GN = saved_GN;
+    next_GQUANT = saved_GQUANT;
+    next_MBA = saved_MBA;
+    next_MTYPE_vec = saved_MTYPE_vec;
     case (cur_layer)
+        wait_for_it:    // Consider this an ERROR STATE!
+            status_2 = 1'b1;
         piclayer_readPSC : begin
             if(PSC) begin
-                status_2 = 1'b1;
                 countdown_next = 6'd20;
                 next_layer = piclayer_skipPSC;
             end
+            else // we SHOULD see a PSC, or something screwed up!
+                next_layer = wait_for_it;
         end
         piclayer_skipPSC : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                next_layer = piclayer_readTR;
+        end
+        piclayer_readTR : begin
+            next_TR = TR;
+            countdown_next = 6'd5;
+            next_layer = piclayer_skipTR;
+        end
+        piclayer_skipTR : begin
             if(countdown > 0) begin
                 if(shiftsig) begin
                     shiftsig_next = 1'b0;
@@ -317,10 +375,136 @@ always_comb begin
                 end
             end
             else 
-                next_layer = piclayer_readTR;
+                next_layer = piclayer_readPTYPE;
         end
-        piclayer_readTR : begin
-            next_TR = TR;
+        piclayer_readPTYPE : begin
+            if(PTYPE) begin
+                countdown_next = 6'd7;  // PTYPE is only 6, but we'll also skip PEI.
+                next_layer = piclayer_skipPTYPE;
+            end
+            else 
+                next_layer = wait_for_it;
+        end
+        piclayer_skipPTYPE : begin
+            if(countdown > 0) begin
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else 
+                next_layer = piclayer_readGBSC;
+        end
+        piclayer_readGBSC : begin
+            if(GBSC) begin
+                countdown_next = 6'd16;
+                next_layer = piclayer_skipGBSC;
+            end
+            else // we SHOULD see a GBSC, or something screwed up! (PEI was set)
+                next_layer = wait_for_it;
+        end
+        piclayer_skipGBSC : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                next_layer = piclayer_readGN;
+        end
+        piclayer_readGN : begin
+            next_GN = GN;
+            countdown_next = 6'd4;
+            next_layer = piclayer_skipGN;
+        end
+        piclayer_skipGN : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                next_layer = piclayer_readGQUANT;
+        end
+        piclayer_readGQUANT : begin
+            next_GQUANT = GQUANT;
+            countdown_next = 6'd6;  // Skip 5 + GEI.
+            next_layer = piclayer_skipGQUANT;
+        end
+        piclayer_skipGQUANT : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                next_layer = piclayer_readMBA;
+        end
+        piclayer_readMBA : begin
+            next_MBA = MBA;
+            countdown_next = MBA_SKIP;
+            next_layer = piclayer_skipMBA;
+            if(MTYPE_SKIP > 10)
+                next_layer = wait_for_it;   // Error!
+        end
+        piclayer_skipMBA : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                next_layer = piclayer_readMTYPE;
+        end
+        piclayer_readMTYPE : begin
+            next_MTYPE_vec = {MTYPE_MQUANT_PRESENT, 
+                            MTYPE_MVD_PRESENT,
+                            MTYPE_CBP_PRESENT,
+                            MTYPE_TCOEFF_PRESENT};
+            countdown_next = MTYPE_SKIP;
+            next_layer = piclayer_skipMTYPE;
+            if(MTYPE_SKIP > 10)
+                next_layer = wait_for_it;   // Error!
+        end
+        piclayer_skipMTYPE : begin
+            if(countdown > 0) begin // make 20 shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, onwards to TR.
+                if(saved_MTYPE_vec[3])  // if MQUANT present
+                    next_layer = piclayer_readMQUANT;
+                else if(saved_MTYPE_vec[2]) // if MVD present
+                    next_layer = piclayer_readMVD;
+                else if(saved_MTYPE_vec[1]) // if CBP present
+                    next_layer = piclayer_readCBP;
+                else // if(saved_MTYPE_vec[0])  // finaly if somehow TCOEFF
+                    next_layer = piclayer_readTCOEFF;
+                    // there is no MTYPE where NONE are present.
         end
         default: ;
     endcase
@@ -580,5 +764,153 @@ end
 
 // Since targeting I-frames only - that is, intra-frames so far as I understand -
 // should be safe to skip inter-frame handling. I will find out soon, i suppose, lol. 
+    
+
+
+    logic vga_clk, vga_blank, vga_sync;
+    logic [9:0] vga_x, vga_y;
+
+    vga_controller vgac(.Clk(clk50),
+                        .Reset(reset),
+                        .hs(hsync),
+                        .vs(vsync),
+                        .pixel_clk(vga_clk),
+                        .blank(vga_blank),
+                        .sync(vga_sync),
+                        .DrawX(vga_x),
+                        .DrawY(vga_y)
+    );
+
+    logic [7:0] calc_red, calc_green, calc_blue;
+
+    always_ff @( posedge vga_clk or posedge reset ) begin 
+        if(reset) begin
+            red <= 0;
+            green <= 0;
+            blue <= 0;
+        end
+        else if (vga_blank) begin
+            red <= calc_red[7:4];
+            green <= calc_green[7:4];
+            blue <= calc_blue[7:4];
+        end
+		  else begin
+				red <= 0;
+				green <= 0;
+				blue <= 0;
+			end
+    end
+
+    logic [14:0] calc_Y_MB_offset;
+    // logic [7:0] calc_Y_sub;
+    logic [8:0] Yscale_x, Yscale_y;
+    logic [4:0] calc_Y_MB_col, calc_Y_MB_row;
+    logic [3:0] calc_Y_MB_internal_col, calc_Y_MB_internal_row;
+
+    assign Yscale_x = vga_x / 3; // scale-x should be 0-175, plus some
+    assign Yscale_y = vga_y / 3; // scale-y should be 0-143, plus some
+
+    always_comb begin    // scale down by 3x;
+        // Macroblocks are in raster-order, with the pixels within each macroblock in raster-order.
+        calc_Y_MB_col = Yscale_x >> 4;   // divide by 16;
+        calc_Y_MB_row = Yscale_y >> 4;   
+        calc_Y_MB_offset = ((calc_Y_MB_row* 11) << 8) + (calc_Y_MB_col << 8);
+        calc_Y_MB_internal_col = Yscale_x[3:0];
+        calc_Y_MB_internal_row = Yscale_y[3:0];
+        VGA_Y_ADDR = calc_Y_MB_offset + (calc_Y_MB_internal_row << 4) + calc_Y_MB_internal_col;
+    end
+
+    logic [12:0] calc_C_MB_offset;
+    // logic [7:0]  calc_Cb_sub, calc_Cr_sub;
+    logic [7:0] Cscale_x, Cscale_y;
+    logic [4:0] calc_C_MB_col, calc_C_MB_row;
+    logic [2:0] calc_C_MB_internal_col, calc_C_MB_internal_row;
+
+    assign Cscale_x = Yscale_x >> 1; // scale-x should be 0-87, plus some
+    assign Cscale_y = Yscale_y >> 1; // scale-y should be 0-71, plus some
+
+    always_comb begin
+        calc_C_MB_col = Cscale_x >> 3;   // divide by 8
+        calc_C_MB_row = Cscale_y >> 3;
+        calc_C_MB_offset = ((calc_C_MB_row* 11) << 6) + (calc_C_MB_col << 6);
+        calc_C_MB_internal_col = Cscale_x[2:0];
+        calc_C_MB_internal_row = Cscale_y[2:0];
+        VGA_C_ADDR = calc_C_MB_offset + (calc_C_MB_internal_row << 3) + calc_C_MB_internal_col;
+    end
+
+
+
+    always_comb begin
+        if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
+            calc_red = 0;
+            calc_green = 0;
+            calc_blue = 0;
+        end
+        else begin  // rounding a lot here... rec.601 to RGB conversion, stolen from wikipedia wiki/YCbCr
+            calc_red = ((298 * VGA_Y_RDDATA)>>8) + ((408*VGA_Cr_RDDATA)>>8) + 223;
+            calc_green = ((298 * VGA_Y_RDDATA)>>8) - ((100*VGA_Cb_RDDATA)>>8) - ((208*VGA_Cr_RDDATA)>>8)+136;
+            calc_blue = ((298 * VGA_Y_RDDATA)>>8) + ((516*VGA_Cb_RDDATA)>>8) - 277;
+        end
+    end
+
+    logic [14:0] ASIC_Y_ADDR, ASIC_Y_OFFSET;    // offset is value to add to raster-order to get which one. 
+    logic [7:0] ASIC_Y_WRDATA, ASIC_Y_RDDATA;
+    logic ASIC_Y_RDEN, ASIC_Y_WREN;
+    logic [14:0] VGA_Y_ADDR;
+    logic [7:0] VGA_Y_RDDATA;
+
+    // Assign the offset, that gets us to the current macroblock
+    // such that raster-order within the macroblock should be sufficient from here. 
+    // ((saved_gn - 1) * 16 + (saved_MBA -1))*256
+    // assign ASIC_Y_OFFSET = ((saved_GN - 1) << 4)
+
+    sram_15bit Y_sram(.address_a(ASIC_Y_ADDR),
+                    .address_b(VGA_Y_ADDR),
+                    .clock(clk50),
+                    .data_a(ASIC_Y_WRDATA),
+                    .data_b(8'b0),
+                    .rden_a(ASIC_Y_RDEN),
+                    .rden_b(1'b1),
+                    .wren_a(ASIC_Y_WREN),
+                    .wren_b(1'b0),
+                    .q_a(ASIC_Y_RDDATA),
+                    .q_b(VGA_Y_RDDATA)
+                    );
+
+    logic [12:0] ASIC_Cb_ADDR, ASIC_Cb_OFFSET;
+    logic [7:0] ASIC_Cb_WRDATA, ASIC_Cb_RDDATA;
+    logic ASIC_Cb_RDEN, ASIC_Cb_WREN;
+    logic [12:0] VGA_C_ADDR;    // Unified VGA address for Cb/Cr
+    logic [7:0] VGA_Cb_RDDATA;
+    sram_13bit Cb_sram(.address_a(ASIC_Cb_ADDR),
+                    .address_b(VGA_C_ADDR),
+                    .clock(clk50),
+                    .data_a(ASIC_Cb_WRDATA),
+                    .data_b(8'b0),
+                    .rden_a(ASIC_Cb_RDEN),
+                    .rden_b(1'b1),
+                    .wren_a(ASIC_Cb_WREN),
+                    .wren_b(1'b0),
+                    .q_a(ASIC_Cb_RDDATA),
+                    .q_b(VGA_Cb_RDDATA)
+                    );
+
+    logic [12:0] ASIC_Cr_ADDR, ASIC_Cr_OFFSET;
+    logic [7:0] ASIC_Cr_WRDATA, ASIC_Cr_RDDATA;
+    logic ASIC_Cr_RDEN, ASIC_Cr_WREN;
+    // logic [12:0] VGA_Cr_ADDR;
+    logic [7:0] VGA_Cr_RDDATA;
+    sram_13bit Cr_sram(.address_a(ASIC_Cr_ADDR),
+                    .address_b(VGA_C_ADDR),
+                    .clock(clk50),
+                    .data_a(ASIC_Cr_WRDATA),
+                    .data_b(8'b0),
+                    .rden_a(ASIC_Cr_RDEN),
+                    .rden_b(1'b1),
+                    .wren_a(ASIC_Cr_WREN),
+                    .wren_b(1'b0),
+                    .q_a(ASIC_Cr_RDDATA),
+                    .q_b(VGA_Cr_RDDATA)
+                    );
     
 endmodule
