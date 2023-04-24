@@ -64,6 +64,9 @@ module player_toplevel (
 	logic SPI0_CS_N, SPI0_SCLK, SPI0_MISO, SPI0_MOSI, USB_GPX, USB_IRQ, USB_RST;
 	logic Reset_h;
 	logic [3:0] HEX_NUM_5, HEX_NUM_4, HEX_NUM_3, HEX_NUM_2, HEX_NUM_1, HEX_NUM_0; //4 bit input hex digits
+	logic [3:0] HEX_NUM_5_AUD, HEX_NUM_4_AUD, HEX_NUM_3_AUD, HEX_NUM_2_AUD, HEX_NUM_1_AUD, HEX_NUM_0_AUD;
+	logic [3:0] HEX_NUM_5_VID, HEX_NUM_4_VID, HEX_NUM_3_VID, HEX_NUM_2_VID, HEX_NUM_1_VID, HEX_NUM_0_VID;
+	logic [3:0] HEX_NUM_5_LOAD, HEX_NUM_4_LOAD, HEX_NUM_3_LOAD, HEX_NUM_2_LOAD, HEX_NUM_1_LOAD, HEX_NUM_0_LOAD;
 	logic [1:0] signs;
 	logic [1:0] hundreds;
 //	logic [7:0] keycode;
@@ -77,6 +80,26 @@ module player_toplevel (
 	logic AVL_BR_RDEN, VIDASIC_RDEN, AUDASIC_RDEN;	// read-enables
 	logic RAM_INIT_DONE_SIG;
 
+
+//=======================================================
+//  Modification: I2C variables
+//=======================================================
+	
+	logic i2c_serial_sda_in;         //    i2c_serial.sda_in
+	logic i2c_serial_scl_in;         //              .scl_in
+	logic i2c_serial_sda_oe;         //              .sda_oe
+	logic i2c_serial_scl_oe;         //              .scl_oe
+	logic [1:0] aud_mclk_ctr = 2'b00;
+	
+//=======================================================
+//  Modification: I2S variables
+//=======================================================
+	
+	logic i2s_dout;
+	logic i2s_din;
+	logic i2s_sclk;
+	logic i2s_lrclk;
+
 //=======================================================
 //  Structural coding
 //=======================================================
@@ -87,19 +110,71 @@ module player_toplevel (
 //	assign ARDUINO_IO[12] = 1'bZ;
 	assign SPI0_MISO = ARDUINO_IO[12];
 	
-//	assign ARDUINO_IO[9] = 1'bZ;
-//	assign USB_IRQ = ARDUINO_IO[9];
+	//generate 12.5MHz CODEC mclk
+	always_ff @(posedge MAX10_CLK1_50) begin
+		aud_mclk_ctr <= aud_mclk_ctr + 1;
+	end
+	assign i2c_serial_sda_in = ARDUINO_IO[14];
+	assign i2c_serial_scl_in = ARDUINO_IO[15];
+	assign ARDUINO_IO[14] = i2c_serial_sda_oe ? 1'b0 : 1'bz; //pulled directly from intel recommendation 
+	assign ARDUINO_IO[15] = i2c_serial_scl_oe ? 1'b0 : 1'bz;
 	
-	//Assignments specific to Sparkfun USBHostShield-v13
-	//assign ARDUINO_IO[7] = USB_RST;
-	//assign ARDUINO_IO[8] = 1'bZ;
-	//assign USB_GPX = ARDUINO_IO[8];
-		
-	//Assignments specific to Circuits At Home UHS_20
-//	assign ARDUINO_RESET_N = USB_RST;
-//	assign ARDUINO_IO[8] = 1'bZ;
-//	//GPX is unconnected to shield, not needed for standard USB host - set to 0 to prevent interrupt
-//	assign USB_GPX = 1'b0;
+	//note that ARDUINO_IO15 is SCL, and ARDUINO_IO14 is SDA
+	//assign the scl and sda with tristate buffers:
+	assign ARDUINO_IO[3] = aud_mclk_ctr[1];
+	
+	
+	assign i2s_dout = ARDUINO_IO[1];
+
+	// These may be necessary to prevent stupid.
+	assign ARDUINO_IO[1] = 1'bZ;
+	assign ARDUINO_IO[4] = 1'bZ;
+	assign ARDUINO_IO[5] = 1'bZ;
+
+	always_comb begin
+		case (SW1_SYNC)
+			1'b1 : ARDUINO_IO[2] = i2s_din;
+			1'b0 : ARDUINO_IO[2] = ARDUINO_IO[1];
+			default: ;
+		endcase
+	end
+	// assign ARDUINO_IO[2] = i2s_din;
+	// assign ARDUINO_IO[2] = ARDUINO_IO[1];
+	assign i2s_sclk = ARDUINO_IO[5];
+	assign i2s_lrclk = ARDUINO_IO[4];
+
+
+	always_comb begin // Select between the HEX output
+		if(WRITE_OVERRIDE_STATE)begin
+			HEX_NUM_0 = HEX_NUM_0_LOAD;
+			HEX_NUM_1 = HEX_NUM_1_LOAD;
+			HEX_NUM_2 = HEX_NUM_2_LOAD;
+			HEX_NUM_3 = HEX_NUM_3_LOAD;
+			HEX_NUM_4 = HEX_NUM_4_LOAD;
+			HEX_NUM_5 = HEX_NUM_5_LOAD;
+		end
+		else begin
+			case (SW9_SYNC)
+			1'b1 :  begin // assign VIDEO
+				HEX_NUM_0 = HEX_NUM_0_VID;
+				HEX_NUM_1 = HEX_NUM_1_VID;
+				HEX_NUM_2 = HEX_NUM_2_VID;
+				HEX_NUM_3 = HEX_NUM_3_VID;
+				HEX_NUM_4 = HEX_NUM_4_VID;
+				HEX_NUM_5 = HEX_NUM_5_VID;
+			end
+			1'b0 : 	begin // assign AUDIO
+				HEX_NUM_0 = HEX_NUM_0_AUD;
+				HEX_NUM_1 = HEX_NUM_1_AUD;
+				HEX_NUM_2 = HEX_NUM_2_AUD;
+				HEX_NUM_3 = HEX_NUM_3_AUD;
+				HEX_NUM_4 = HEX_NUM_4_AUD;
+				HEX_NUM_5 = HEX_NUM_5_AUD;
+			end
+			default: ;
+			endcase
+		end
+	end
 	
 	//HEX drivers to convert numbers to HEX output
 	HexDriver hex_driver5 (HEX_NUM_5, HEX5[6:0]);
@@ -131,12 +206,7 @@ module player_toplevel (
 	sync sync_3(.Clk(MAX10_CLK1_50), .d(SW[3]), .q(SW3_SYNC));
 	sync sync_2(.Clk(MAX10_CLK1_50), .d(SW[2]), .q(SW2_SYNC));
 	sync sync_1(.Clk(MAX10_CLK1_50), .d(SW[1]), .q(SW1_SYNC));
-	sync sync_0(.Clk(MAX10_CLK1_50), .d(SW[0]), .q(SW0_SYNC));
-	
-	//fill in the hundreds digit as well as the negative sign
-//	assign HEX5 = {1'b1, ~signs[1], 3'b111, ~hundreds[1], ~hundreds[1], 1'b1};
-//	assign HEX2 = {1'b1, ~signs[0], 3'b111, ~hundreds[0], ~hundreds[0], 1'b1};
-	
+	sync sync_0(.Clk(MAX10_CLK1_50), .d(SW[0]), .q(SW0_SYNC));	
 	
 	assign {Reset_h}=~ (KEY[0]); 
 
@@ -171,7 +241,11 @@ module player_toplevel (
 			.sdram_wire_dqm				({DRAM_UDQM,DRAM_LDQM}),    //.dqm
 			.sdram_wire_ras_n			(DRAM_RAS_N),              	//.ras_n
 			.sdram_wire_we_n			(DRAM_WE_N),                //.we_n
-			.switch_input_export       (SW)        					//.switch_input.export
+			.switch_input_export       	(SW),        					//.switch_input.export
+			.i2c_serial_sda_in(i2c_serial_sda_in),
+			.i2c_serial_scl_in(i2c_serial_scl_in),
+			.i2c_serial_sda_oe(i2c_serial_sda_oe),
+			.i2c_serial_scl_oe(i2c_serial_scl_oe)
 	);
 	 
 	// assign LEDR[8] = RAM_INIT_DONE_SIG;
@@ -199,12 +273,13 @@ module player_toplevel (
 			.cs_bo(SPI0_CS_N), //SD card pins (also make sure to disable USB CS if using DE10-Lite)
 			.sclk_o(SPI0_SCLK),
 			.mosi_o(SPI0_MOSI),
-			.miso_i(SPI0_MISO)
-			// .hex_out_4(HEX_NUM_4),
-			// .hex_out_3(HEX_NUM_3),
-			// .hex_out_2(HEX_NUM_2),
-			// .hex_out_1(HEX_NUM_1),
-			// .hex_out_0(HEX_NUM_0),
+			.miso_i(SPI0_MISO),
+			.hex_out_5(HEX_NUM_5_LOAD),
+			.hex_out_4(HEX_NUM_4_LOAD),
+			.hex_out_3(HEX_NUM_3_LOAD),
+			.hex_out_2(HEX_NUM_2_LOAD),
+			.hex_out_1(HEX_NUM_1_LOAD),
+			.hex_out_0(HEX_NUM_0_LOAD),
 	);
 
 	sdram_access_ctl sdram_bus_arbit(
@@ -220,7 +295,8 @@ module player_toplevel (
 
     // signals for the peripherals
        		.addr_in_1(VIDASIC_ADDR << 1),
-    		.addr_in_2(AUDASIC_ADDR << 1),
+    		.addr_in_2(AUDASIC_ADDR << 1), //  << 1), According to all known laws of avalon bus
+			// this left shift should be here, but benjacode works in mysterious ways.
     		.addr_in_write(SD_MODULE_ADDR << 1),	//Lshift due to avalon bus specs!
     		.read_in_1(VIDASIC_RDEN),
     		.read_in_2(AUDASIC_RDEN),
@@ -252,13 +328,33 @@ module player_toplevel (
     		.hsync(VGA_HS),
     		.vsync(VGA_VS),
 			// temp hex connections
-			.hex_out_5(HEX_NUM_5),
-			.hex_out_4(HEX_NUM_4),
-			.hex_out_3(HEX_NUM_3),
-			.hex_out_2(HEX_NUM_2),
-			.hex_out_1(HEX_NUM_1),
-			.hex_out_0(HEX_NUM_0)
-);
+			.hex_out_5(HEX_NUM_5_VID),
+			.hex_out_4(HEX_NUM_4_VID),
+			.hex_out_3(HEX_NUM_3_VID),
+			.hex_out_2(HEX_NUM_2_VID),
+			.hex_out_1(HEX_NUM_1_VID),
+			.hex_out_0(HEX_NUM_0_VID)
+	);
+	I2S_interface audasic(
+			.clk50(MAX10_CLK1_50),
+			.reset(Reset_h),
+			.ADDR_PRGM(AUDASIC_ADDR),
+			.RDdata_PRGM(AUDASIC_RDDATA), //output
+			.RDen(AUDASIC_RDEN), //input
+			.avalon_bridge_acknowledge(AUDASIC_ACK),
+			.I2S_DIN(i2s_din),
+			.I2S_LRCLK(i2s_lrclk),
+			.I2S_SCLK(i2s_sclk),
+			// .ADDR_load(KEY[0]), //just load 0 for now at start
+			.I2S_enable((~SW9_SYNC) & (~WRITE_OVERRIDE_STATE)),
+			.ADDR_start(0),//0 for now
+			.hex_out_5(HEX_NUM_5_AUD),
+			.hex_out_4(HEX_NUM_4_AUD),
+			.hex_out_3(HEX_NUM_3_AUD),
+			.hex_out_2(HEX_NUM_2_AUD),
+			.hex_out_1(HEX_NUM_1_AUD),
+			.hex_out_0(HEX_NUM_0_AUD)
+	 );
 
 
 endmodule

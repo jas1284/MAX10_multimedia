@@ -290,25 +290,41 @@ logic [5:0] countdown, countdown_next;
 logic shiftsig, shiftsig_next;
 logic [4:0] saved_TR, next_TR;
 logic [3:0] saved_GN, next_GN;
-logic [4:0] saved_GQUANT, next_GQUANT;
+logic [4:0] saved_QUANT, next_QUANT;
 logic [5:0] saved_MBA, next_MBA;
 logic [3:0] saved_MTYPE_vec, next_MTYPE_vec;
+// logic [5:0] saved_TCOEFF_count, next_TCOEFF_count;
+logic [2:0] saved_block_layer, next_block_layer;
+logic [7:0] saved_TCOEFF_table [64];
+logic [7:0] next_TCOEFF_table_entry;
+logic [5:0] saved_TCOEFF_zigzag, next_TCOEFF_zigzag;
+logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
 
 // FF Logic for the big-bloody-state-machine!
 always_ff @( posedge clk50 or posedge reset ) begin
     if(reset) begin
+        for(int i = 0; i < 64; i++)
+            saved_TCOEFF_table[i] <= 8'b0;
+        saved_TCOEFF_zigzag <= 0;
+        saved_block_layer <= 0;
+        // saved_TCOEFF_count <= 0;
         saved_MTYPE_vec <= 0;
         saved_MBA <= 0;
-        saved_GQUANT <= 0;
+        saved_QUANT <= 0;
         saved_GN <= 0;
         saved_TR <= 0;
         cur_layer <= piclayer_readPSC;  // first thing is to always read PSC.
         countdown <= 0;
     end
-    else if (Q_RDY) begin   // Only run if the queue is ready-to-go!
+    else if (Q_RDY & run) begin   // Only run if the queue is ready-to-go!
+        if(next_TCOEFF_table_WREN)
+            saved_TCOEFF_table[dezigzag_raster_out] <= next_TCOEFF_table_entry;
+        saved_TCOEFF_zigzag <= next_TCOEFF_zigzag;
+        saved_block_layer <= next_block_layer;
+        // saved_TCOEFF_count <= next_TCOEFF_count;
         saved_MTYPE_vec <= next_MTYPE_vec;
         saved_MBA <= next_MBA;
-        saved_GQUANT <= next_GQUANT;
+        saved_QUANT <= next_QUANT;
         saved_GN <= next_GN;
         saved_TR <= next_TR;
         cur_layer <= next_layer;
@@ -332,9 +348,14 @@ always_comb begin
     shiftsig_next = shiftsig;
     next_TR = saved_TR;
     next_GN = saved_GN;
-    next_GQUANT = saved_GQUANT;
+    next_QUANT = saved_QUANT;
     next_MBA = saved_MBA;
     next_MTYPE_vec = saved_MTYPE_vec;
+    // next_TCOEFF_count = saved_TCOEFF_count;
+    next_block_layer = saved_block_layer;
+    next_TCOEFF_zigzag = saved_TCOEFF_zigzag;
+    next_TCOEFF_table_WREN = 0; // don't write to TCOEFF TABLE unless AUTHORIZED !
+    next_TCOEFF_table_entry = 0;
     case (cur_layer)
         wait_for_it:    // Consider this an ERROR STATE!
             status_2 = 1'b1;
@@ -438,7 +459,7 @@ always_comb begin
                 next_layer = piclayer_readGQUANT;
         end
         piclayer_readGQUANT : begin
-            next_GQUANT = GQUANT;
+            next_QUANT = GQUANT;
             countdown_next = 6'd6;  // Skip 5 + GEI.
             next_layer = piclayer_skipGQUANT;
         end
@@ -456,7 +477,7 @@ always_comb begin
                 next_layer = piclayer_readMBA;
         end
         piclayer_readMBA : begin
-            next_MBA = MBA;
+            next_MBA = saved_MBA + MBA; // Equal to previous MBA + coded MBA value
             countdown_next = MBA_SKIP;
             next_layer = piclayer_skipMBA;
             if(MTYPE_SKIP > 10)
@@ -504,7 +525,97 @@ always_comb begin
                     next_layer = piclayer_readCBP;
                 else // if(saved_MTYPE_vec[0])  // finaly if somehow TCOEFF
                     next_layer = piclayer_readTCOEFF;
+                    next_TCOEFF_zigzag = 0; // Up to 64 TCOEFFS per block
+                    // next_TCOEFF_count = 0; // up to 64 TCOEFFS per block
+                    next_block_layer = 0;  // up to 6 blocks per macroblock
                     // there is no MTYPE where NONE are present.
+        end
+        piclayer_readTCOEFF : begin // We're in the block-layer now
+            next_layer = piclayer_skipTCOEFF;
+            if(TCOEFF_EOB) begin
+                countdown_next = 2; // Skip EOB
+                next_layer = piclayer_skipTCOEFF;
+                // next_TCOEFF_count = 0;
+                next_TCOEFF_zigzag = 0;
+                next_block_layer = saved_block_layer + 1;
+            end
+            else if(TCOEFF_ESC) begin   // We have a Fixed-Length code on our hands... special protocols!
+                case (saved_QUANT[0])
+                    1'b1 :  begin   // Quant ODD
+                        case (BITQUEUE[35]) // Check sign
+                            1'b0    :   begin   // LEVEL POSITIV
+                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)+1); // set CODE, signed
+                            end
+                            1'b1    :   begin   // LEVEL NEGATIVE
+                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)-1); // set CODE, signed
+                            end
+                        endcase
+                    end
+                    1'b0 :  begin   // QUANT EVEN
+                        case (BITQUEUE[35]) // Check sign
+                            1'b0    :   begin   // LEVEL POSITIV
+                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)+1) - 1; // set CODE, signed
+                            end
+                            1'b1    :   begin   // LEVEL NEGATIVE
+                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)-1) + 1; // set CODE, signed
+                            end
+                        endcase
+                    end
+                endcase
+                next_TCOEFF_zigzag = saved_TCOEFF_zigzag + BITQUEUE[41:36] + 1; // RUN
+                next_TCOEFF_table_WREN = 1'b1;
+                countdown_next = 20;    // Skip everything since we just did the whole ass FLC
+            end 
+            else begin  // Not end, nor FLC, so interpret using the VLC table
+                case (saved_QUANT[0])
+                    1'b1 :  begin   // Quant ODD
+                        case (TCOEFF_SIGN) // Check sign
+                            1'b0    :   begin   // LEVEL POSITIV
+                                next_TCOEFF_table_entry = saved_QUANT * ((TCOEFF_LEVEL << 1)+1); // set CODE, signed
+                            end
+                            1'b1    :   begin   // LEVEL NEGATIVE
+                                next_TCOEFF_table_entry = saved_QUANT * (((0 - TCOEFF_LEVEL)<< 1)-1); // set CODE, signed
+                            end
+                        endcase
+                    end
+                    1'b0 :  begin   // QUANT EVEN
+                        case (TCOEFF_SIGN) // Check sign
+                            1'b0    :   begin   // LEVEL POSITIV
+                                next_TCOEFF_table_entry = saved_QUANT * ((TCOEFF_LEVEL << 1)+1) - 1; // set CODE, signed
+                            end
+                            1'b1    :   begin   // LEVEL NEGATIVE
+                                next_TCOEFF_table_entry = saved_QUANT * (((0 - TCOEFF_LEVEL)<< 1)-1) + 1; // set CODE, signed
+                            end
+                        endcase
+                    end
+                endcase
+                next_TCOEFF_zigzag = saved_TCOEFF_zigzag + TCOEFF_RUN + 1; // RUN
+                next_TCOEFF_table_WREN = 1'b1;
+                countdown_next = TCOEFF_skip;
+            end
+        end
+        piclayer_skipTCOEFF : begin
+            if(countdown > 0) begin
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else begin  // done? ok, decision time
+                next_layer = piclayer_readTCOEFF;
+                if(saved_block_layer >= 6) begin // If we just finished the last block...
+                    next_layer = piclayer_readMBA;
+                    if(saved_MBA >= 33) begin    // If we just finished the last MBA...
+                        next_layer = piclayer_readGBSC;
+                        if(saved_GN >= 5) begin // If we just finished the last GOB...
+                            next_layer = piclayer_readPSC;
+                        end
+                    end
+                end
+            end
         end
         default: ;
     endcase
@@ -762,6 +873,498 @@ always_comb begin
     endcase
 end
 
+logic TCOEFF_EOB;           // Boolean, output of LUT: Is it end-of-block?
+logic TCOEFF_FIRSTCOEFF;     // Boolean, INPUT of LUT: Is it the first coefficient in the block?
+logic [4:0] TCOEFF_RUN;     // Magnitude, output, of RUN
+logic TCOEFF_SIGN;          // Boolean, output, Sign of the output value
+logic [3:0] TCOEFF_LEVEL;   // Magnitude, output, of LEVEL
+logic TCOEFF_ESC;           // Boolean, Escape? (indicates 20-bit encoding to follow.)
+logic [3:0] TCOEFF_skip;    // output of LUT, How many bits to skip? 
+
+assign TCOEFF_FIRSTCOEFF = (saved_TCOEFF_zigzag == 0);  // If filling (0,0) then it's gotta be firstCOEFF.
+
+always_comb begin
+    TCOEFF_EOB = 0;
+    TCOEFF_ESC = 0;
+    TCOEFF_SIGN = 0;
+    TCOEFF_RUN = 5'd31;     // Set to unreachable value, interpret as ERROR!
+    TCOEFF_LEVEL = 4'd0;    // Leval cannot be zero, interpret as ERROR!
+    TCOEFF_skip = 0;        // Shouldn't be zero - again, interpret as ERROR!
+    casez (BITQUEUE[47:34])
+        14'b0100?????????? : begin
+            TCOEFF_SIGN = BITQUEUE[43];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd5;
+        end
+        14'b00101????????? : begin
+            TCOEFF_SIGN = BITQUEUE[42];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd6;
+        end
+        14'b0000110??????? : begin
+            TCOEFF_SIGN = BITQUEUE[40];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd4;
+            TCOEFF_skip = 4'd8;
+        end
+        14'b00100110?????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd5;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b00100001?????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd6;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b0000001010???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd7;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b000000011101?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd8;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000011000?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd9;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000010011?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd10;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000010000?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd11;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000000011010? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd12;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011001? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd13;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011000? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd14;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000010111? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd15;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b011??????????? : begin
+            TCOEFF_SIGN = BITQUEUE[44];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd04;
+        end
+        14'b000110???????? : begin
+            TCOEFF_SIGN = BITQUEUE[41];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd07;
+        end
+        14'b00100101?????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd09;
+        end
+        14'b0000001100???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd4;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b000000011011?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd5;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000000010110? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd6;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000010101? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd1;
+            TCOEFF_LEVEL = 4'd7;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0101?????????? : begin
+            TCOEFF_SIGN = BITQUEUE[43];
+            TCOEFF_RUN = 5'd2;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd5;
+        end
+        14'b0000100??????? : begin
+            TCOEFF_SIGN = BITQUEUE[40];
+            TCOEFF_RUN = 5'd2;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd8;
+        end
+        14'b0000001011???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd2;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b000000010100?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd2;
+            TCOEFF_LEVEL = 4'd4;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000000010100? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd2;
+            TCOEFF_LEVEL = 4'd5;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b00111????????? : begin
+            TCOEFF_SIGN = BITQUEUE[42];
+            TCOEFF_RUN = 5'd3;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd6;
+        end
+        14'b00100100?????? : begin
+            TCOEFF_SIGN = BITQUEUE[41];
+            TCOEFF_RUN = 5'd3;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b000000011100?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd3;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000000010011? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd3;
+            TCOEFF_LEVEL = 4'd4;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b00110????????? : begin
+            TCOEFF_SIGN = BITQUEUE[42];
+            TCOEFF_RUN = 5'd4;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd6;
+        end
+        14'b0000001111???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd4;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b000000010010?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd4;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000111???????? : begin
+            TCOEFF_SIGN = BITQUEUE[41];
+            TCOEFF_RUN = 5'd5;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd7;
+        end
+        14'b0000001001???? : begin
+            TCOEFF_SIGN = BITQUEUE[47];
+            TCOEFF_RUN = 5'd5;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b0000000010010? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd5;
+            TCOEFF_LEVEL = 4'd3;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b000101???????? : begin
+            TCOEFF_SIGN = BITQUEUE[41];
+            TCOEFF_RUN = 5'd6;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd7;
+        end
+        14'b000000011110?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd6;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000100???????? : begin
+            TCOEFF_SIGN = BITQUEUE[41];
+            TCOEFF_RUN = 5'd7;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd7;
+        end
+        14'b000000010101?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd7;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000111??????? : begin
+            TCOEFF_SIGN = BITQUEUE[40];
+            TCOEFF_RUN = 5'd8;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd8;
+        end
+        14'b000000010001?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd8;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000101??????? : begin
+            TCOEFF_SIGN = BITQUEUE[40];
+            TCOEFF_RUN = 5'd9;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd8;
+        end
+        14'b0000000010001? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd9;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b00100111?????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd10;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b0000000010000? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd10;
+            TCOEFF_LEVEL = 4'd2;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b00100011??????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd11;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b00100010??????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd12;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b00100000??????? : begin
+            TCOEFF_SIGN = BITQUEUE[39];
+            TCOEFF_RUN = 5'd13;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd9;
+        end
+        14'b0000001110???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd14;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b0000001101????  : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd15;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b0000001000???? : begin
+            TCOEFF_SIGN = BITQUEUE[37];
+            TCOEFF_RUN = 5'd16;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd11;
+        end
+        14'b000000011111?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd17;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000011010?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd18;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000011001?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd19;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000010111?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd20;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b000000010110?? : begin
+            TCOEFF_SIGN = BITQUEUE[35];
+            TCOEFF_RUN = 5'd21;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd13;
+        end
+        14'b0000000011111? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd22;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011110? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd23;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011101? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd24;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011100? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd25;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd14;
+        end
+        14'b0000000011011? : begin
+            TCOEFF_SIGN = BITQUEUE[34];
+            TCOEFF_RUN = 5'd22;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd14;
+        end
+        default: ;
+    endcase
+    if(TCOEFF_FIRSTCOEFF) begin
+        if(BITQUEUE[47]) begin
+            TCOEFF_SIGN = BITQUEUE[46];
+            TCOEFF_RUN = 5'd0;
+            TCOEFF_LEVEL = 4'd1;
+            TCOEFF_skip = 4'd2;
+        end
+    end
+    else begin
+        case (BITQUEUE[47:46])
+            2'b11: begin
+                TCOEFF_SIGN = BITQUEUE[45];
+                TCOEFF_RUN = 5'd0;
+                TCOEFF_LEVEL = 4'd1;
+                TCOEFF_skip = 4'd3;
+            end
+            2'b10: begin
+                TCOEFF_EOB = 1'b1;
+                TCOEFF_skip = 4'd2;
+            end
+            default: ;
+        endcase
+    end
+end
+
+logic [5:0] dezigzag_input;
+logic [5:0] dezigzag_raster_out;
+
+assign dezigzag_input = next_TCOEFF_zigzag;
+
+always_comb begin
+    case (dezigzag_input)
+        6'd0: dezigzag_raster_out = 6'd0;
+        6'd1: dezigzag_raster_out = 6'd1;
+        6'd2: dezigzag_raster_out = 6'd8;
+        6'd3: dezigzag_raster_out = 6'd16;
+        6'd4: dezigzag_raster_out = 6'd9;
+        6'd5: dezigzag_raster_out = 6'd2;
+        6'd6: dezigzag_raster_out = 6'd3;
+        6'd7: dezigzag_raster_out = 6'd10;
+        6'd8: dezigzag_raster_out = 6'd17;
+        6'd9: dezigzag_raster_out = 6'd24;
+        6'd10: dezigzag_raster_out = 6'd32;
+        6'd11: dezigzag_raster_out = 6'd25;
+        6'd12: dezigzag_raster_out = 6'd18;
+        6'd13: dezigzag_raster_out = 6'd11;
+        6'd14: dezigzag_raster_out = 6'd4;
+        6'd15: dezigzag_raster_out = 6'd5;
+        6'd16: dezigzag_raster_out = 6'd12;
+        6'd17: dezigzag_raster_out = 6'd19;
+        6'd18: dezigzag_raster_out = 6'd26;
+        6'd19: dezigzag_raster_out = 6'd33;
+        6'd20: dezigzag_raster_out = 6'd40;
+        6'd21: dezigzag_raster_out = 6'd48;
+        6'd22: dezigzag_raster_out = 6'd41;
+        6'd23: dezigzag_raster_out = 6'd34;
+        6'd24: dezigzag_raster_out = 6'd27;
+        6'd25: dezigzag_raster_out = 6'd20;
+        6'd26: dezigzag_raster_out = 6'd13;
+        6'd27: dezigzag_raster_out = 6'd6;
+        6'd28: dezigzag_raster_out = 6'd7;
+        6'd29: dezigzag_raster_out = 6'd14;
+        6'd30: dezigzag_raster_out = 6'd21;
+        6'd31: dezigzag_raster_out = 6'd28;
+        6'd32: dezigzag_raster_out = 6'd35;
+        6'd33: dezigzag_raster_out = 6'd42;
+        6'd34: dezigzag_raster_out = 6'd49;
+        6'd35: dezigzag_raster_out = 6'd56;
+        6'd36: dezigzag_raster_out = 6'd57;
+        6'd37: dezigzag_raster_out = 6'd50;
+        6'd38: dezigzag_raster_out = 6'd43;
+        6'd39: dezigzag_raster_out = 6'd36;
+        6'd40: dezigzag_raster_out = 6'd29;
+        6'd41: dezigzag_raster_out = 6'd22;
+        6'd42: dezigzag_raster_out = 6'd15;
+        6'd43: dezigzag_raster_out = 6'd23;
+        6'd44: dezigzag_raster_out = 6'd30;
+        6'd45: dezigzag_raster_out = 6'd37;
+        6'd46: dezigzag_raster_out = 6'd44;
+        6'd47: dezigzag_raster_out = 6'd51;
+        6'd48: dezigzag_raster_out = 6'd58;
+        6'd49: dezigzag_raster_out = 6'd59;
+        6'd50: dezigzag_raster_out = 6'd52;
+        6'd51: dezigzag_raster_out = 6'd45;
+        6'd52: dezigzag_raster_out = 6'd38;
+        6'd53: dezigzag_raster_out = 6'd31;
+        6'd54: dezigzag_raster_out = 6'd39;
+        6'd55: dezigzag_raster_out = 6'd46;
+        6'd56: dezigzag_raster_out = 6'd53;
+        6'd57: dezigzag_raster_out = 6'd60;
+        6'd58: dezigzag_raster_out = 6'd61;
+        6'd59: dezigzag_raster_out = 6'd54;
+        6'd60: dezigzag_raster_out = 6'd47;
+        6'd61: dezigzag_raster_out = 6'd55;
+        6'd62: dezigzag_raster_out = 6'd62;
+        default: dezigzag_raster_out = 6'd63; 
+    endcase
+end
+
+
 // Since targeting I-frames only - that is, intra-frames so far as I understand -
 // should be safe to skip inter-frame handling. I will find out soon, i suppose, lol. 
     
@@ -794,11 +1397,11 @@ end
             green <= calc_green[7:4];
             blue <= calc_blue[7:4];
         end
-		  else begin
-				red <= 0;
-				green <= 0;
-				blue <= 0;
-			end
+        else begin
+            red <= 0;
+            green <= 0;
+            blue <= 0;
+        end
     end
 
     logic [14:0] calc_Y_MB_offset;

@@ -7,6 +7,10 @@
 		.avalon_bridge_acknowledge (<connected-to-avalon_bridge_acknowledge>), //              .acknowledge
 		.avalon_bridge_read_data   (<connected-to-avalon_bridge_read_data>),   //              .read_data
 		.clk_clk                   (<connected-to-clk_clk>),                   //           clk.clk
+		.i2c_serial_sda_in         (<connected-to-i2c_serial_sda_in>),         //    i2c_serial.sda_in
+		.i2c_serial_scl_in         (<connected-to-i2c_serial_scl_in>),         //              .scl_in
+		.i2c_serial_sda_oe         (<connected-to-i2c_serial_sda_oe>),         //              .sda_oe
+		.i2c_serial_scl_oe         (<connected-to-i2c_serial_scl_oe>),         //              .scl_oe
 		.key_input_export          (<connected-to-key_input_export>),          //     key_input.export
 		.led_wire_export           (<connected-to-led_wire_export>),           //      led_wire.export
 		.reset_reset_n             (<connected-to-reset_reset_n>),             //         reset.reset_n

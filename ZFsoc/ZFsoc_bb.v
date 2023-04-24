@@ -8,6 +8,10 @@ module ZFsoc (
 	avalon_bridge_acknowledge,
 	avalon_bridge_read_data,
 	clk_clk,
+	i2c_serial_sda_in,
+	i2c_serial_scl_in,
+	i2c_serial_sda_oe,
+	i2c_serial_scl_oe,
 	key_input_export,
 	led_wire_export,
 	reset_reset_n,
@@ -32,6 +36,10 @@ module ZFsoc (
 	output		avalon_bridge_acknowledge;
 	output	[15:0]	avalon_bridge_read_data;
 	input		clk_clk;
+	input		i2c_serial_sda_in;
+	input		i2c_serial_scl_in;
+	output		i2c_serial_sda_oe;
+	output		i2c_serial_scl_oe;
 	input		key_input_export;
 	output	[5:0]	led_wire_export;
 	input		reset_reset_n;
