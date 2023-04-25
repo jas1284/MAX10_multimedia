@@ -207,8 +207,10 @@ module player_toplevel (
 	sync sync_2(.Clk(MAX10_CLK1_50), .d(SW[2]), .q(SW2_SYNC));
 	sync sync_1(.Clk(MAX10_CLK1_50), .d(SW[1]), .q(SW1_SYNC));
 	sync sync_0(.Clk(MAX10_CLK1_50), .d(SW[0]), .q(SW0_SYNC));	
+	logic KEY0_SYNC;
+	sync sync_rst(.Clk(MAX10_CLK1_50), .d(KEY[0]), .q(KEY0_SYNC));	
 	
-	assign {Reset_h}=~ (KEY[0]); 
+	assign {Reset_h}=~ (KEY0_SYNC); 
 
 	assign signs = 2'b00;
 //	assign HEX_NUM_4 = 4'h4;
@@ -229,7 +231,7 @@ module player_toplevel (
 			.clk_clk                   (MAX10_CLK1_50),             //.clk_clk
 			.key_input_export          (KEY[1]),         			//.key_input.export
 			.led_wire_export           (LEDR[5:0]),           		//.led_wire.export
-			.reset_reset_n             (KEY[0]),             		//.reset.reset_n
+			.reset_reset_n             (KEY0_SYNC),             		//.reset.reset_n
 			//SDRAM
 			.sdram_clk_100_clk			(DRAM_CLK),					//100mhz SDRAM clock! FAST BOI
 			.sdram_wire_addr			(DRAM_ADDR),               	//sdram_wire.addr
@@ -279,7 +281,7 @@ module player_toplevel (
 			.hex_out_3(HEX_NUM_3_LOAD),
 			.hex_out_2(HEX_NUM_2_LOAD),
 			.hex_out_1(HEX_NUM_1_LOAD),
-			.hex_out_0(HEX_NUM_0_LOAD),
+			.hex_out_0(HEX_NUM_0_LOAD)
 	);
 
 	sdram_access_ctl sdram_bus_arbit(
@@ -335,7 +337,7 @@ module player_toplevel (
 			.hex_out_1(HEX_NUM_1_VID),
 			.hex_out_0(HEX_NUM_0_VID)
 	);
-	I2S_interface audasic(
+	I2S_interface_R2 audasic(
 			.clk50(MAX10_CLK1_50),
 			.reset(Reset_h),
 			.ADDR_PRGM(AUDASIC_ADDR),
