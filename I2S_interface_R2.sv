@@ -349,13 +349,36 @@ module I2S_interface_R2 (
 			LRCLK_saved <= 1'b0;
 			I2S_counter <= 5'b0;
 			saved_sign_bit <= 1'b0;
-			I2S_go <= 1'b0;
+			// I2S_go <= 1'b0;
 		end
 		else begin
-			I2S_go <= I2S_go_next;
+			// I2S_go <= I2S_go_next;
 			LRCLK_saved <= I2S_LRCLK;
 			I2S_counter <= I2S_count_next;
 			saved_sign_bit <= next_sign_bit;
+		end
+	end
+
+	// Attempt to make the logic more robust by having the go signal persist on a counter. 
+	logic [5:0] go_counter;
+
+	always_ff @ (posedge clk50 or posedge reset) begin
+		if (reset) begin
+			I2S_go <= 1'b0;
+			go_counter <= 6'd0;
+		end
+		else if (I2S_go_next) begin
+			go_counter <= 6'd32;
+			I2S_go <= 1'b1;
+		end
+		else begin
+			if(go_counter > 0) begin
+				I2S_go <= 1'b1;
+				go_counter <= go_counter - 1;
+			end
+			else begin
+				I2S_go <= 1'b0;
+			end
 		end
 	end
 

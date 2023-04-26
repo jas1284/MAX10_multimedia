@@ -2,8 +2,8 @@
 <sch:Settings xmlns:sch="http://www.altera.com/embeddedsw/bsp/schema">
         <BspType>hal</BspType>
         <BspVersion>default</BspVersion>
-        <BspGeneratedTimeStamp>Apr 25, 2023 10:46:58 PM</BspGeneratedTimeStamp>
-        <BspGeneratedUnixTimeStamp>1682480818940</BspGeneratedUnixTimeStamp>
+        <BspGeneratedTimeStamp>Apr 26, 2023 12:45:20 PM</BspGeneratedTimeStamp>
+        <BspGeneratedUnixTimeStamp>1682531120732</BspGeneratedUnixTimeStamp>
         <BspGeneratedLocation>C:\Users\Jas1284\Documents\ECE385\FINALPROJ\FPSP23-ZF-BASIC\software\SGTL5000_I2C_bsp</BspGeneratedLocation>
         <BspSettingsFile>settings.bsp</BspSettingsFile>
         <SopcDesignFile>..\..\ZFsoc.sopcinfo</SopcDesignFile>
