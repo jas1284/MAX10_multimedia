@@ -31,14 +31,14 @@ module sdcard_init (
 	output logic [3:0] hex_out_0,
 	output logic ram_init_error, //error initializing
 	output logic ram_init_done,  //done with reading all MAX_RAM_ADDRESS words
-	input  logic ram_init_continue,	// continue loading
+	input  logic ram_init_half,	// continue loading
 	output logic cs_bo, //SD card pins (also make sure to disable USB CS if using DE10-Lite)
 	output logic sclk_o,
 	output logic mosi_o,
 	input  logic miso_i  
 );
 
-parameter 			MAX_RAM_ADDRESS = 25'h07FFFFF;	// 32mill addrs, ideally 64MB?
+parameter 			MAX_RAM_ADDRESS = 24'h0800000;	// 32mill addrs, ideally 64MB?
 parameter			SDHC 				 = 1'b1;
 
 logic 				sd_read_block;
@@ -50,7 +50,7 @@ logic	[15:0]		sd_error;
 logic [7:0] 		sd_output_data;
 logic [31:0] 		sd_block_addr, sd_block_addr_saved, sd_block_addr_next;
 
-logic 				ram_half, ram_half_next;
+// logic 				ram_half, ram_half_next;
 
 //registers written in 2-always method
 enum logic [8:0]	{RESET, READBLOCK, READL_0, READL_1, READH_0, READH_1, WRITE, ERROR, DONE} state_r, state_x;
@@ -60,9 +60,9 @@ logic [15:0]		data_r, data_x;
 //assign primary outputs to correct registers
 // assign ram_address = ram_addr_r;
 always_comb begin
-	case (ram_half)
-		1'b0 : ram_address = ram_addr_r[24:0];					// Write to lower-half of ram
-		1'b1 : ram_address = ram_addr_r[24:0] + 25'h0800000;	// Write to upper-half of ram
+	case (ram_init_half)
+		1'b0 : ram_address = ram_addr_r[22:0];					// Write to lower-half of ram
+		1'b1 : ram_address = ram_addr_r[22:0] + 25'h0800000;	// Write to upper-half of ram
 		default: ;
 	endcase
 end
@@ -93,7 +93,7 @@ begin
 		ram_addr_r <= 25'h0000000;
 		data_r <= 16'h0000;
 		ram_status_light <= 0;
-		ram_half <= 0;
+		// ram_half <= 0;
 		// sd_block_addr_saved <= 0;
 	end
 	else begin
@@ -101,7 +101,7 @@ begin
 		state_r <= state_x;
 		data_r <= data_x;
 		ram_addr_r <= ram_addr_x;
-		ram_half <= ram_half_next;
+		// ram_half <= ram_half_next;
 		// sd_block_addr_saved <= sd_block_addr_next;
 		hex_out_5 <= ram_addr_x[23:20];
 		hex_out_4 <= ram_addr_x[19:16];
@@ -130,7 +130,7 @@ begin
 	ram_init_error = 1'b0;
 	ram_init_done = 1'b0;
 	
-	ram_half_next = ram_half;
+	// ram_half_next = ram_half;
 	// sd_block_addr_next = sd_block_addr_saved;
 
 	unique case (state_r)
@@ -141,16 +141,18 @@ begin
 				state_x = ERROR;
 		end
 		READBLOCK: begin //send enable to start block read
-			if (ram_addr_r[23:0] >= MAX_RAM_ADDRESS) //done with the whole range
-				state_x = DONE;
-			else begin
+			if (ram_addr_r >= MAX_RAM_ADDRESS) //done with the whole range
+				ram_init_done = 1'b1; // state_x = DONE;
+			// else begin
 				// sd_block_addr_next = sd_block_addr_saved + 1;
-				sd_read_block = 1'b1; //start block read
-				if (sd_block_addr != 32'h00000000)
-					sd_continue = 1'b1;
-				if (sd_busy == 1'b1)
-					state_x = READH_0;
-			end
+			sd_read_block = 1'b1; //start block read
+			if (sd_block_addr != 32'h00000000)
+				sd_continue = 1'b1;
+			if (sd_busy == 1'b1)
+				state_x = READH_0;
+			// end
+			if(ram_addr_r >= 36'h7FFFFFFFF)
+				state_x = DONE;
 		end
 		READH_0: begin //read first byte (higher byte)
 			if (sd_busy == 1'b0) //busy going low signals end of block, read next block
@@ -188,12 +190,14 @@ begin
 		end
 		DONE: begin
 			ram_init_done = 1'b1;
-			if(ram_init_continue)begin
-				ram_half_next = ~ram_half;
-				state_x = RESET;
-				// if()
-				// ram_addr_x = 
-			end
+			// if(ram_init_half)begin
+			// 	ram_half_next = ~ram_half;
+			// 	// state_x = RESET;
+			// 	state_x = READBLOCK;
+			// 	ram_addr_x = ram_addr_r + 1;
+			// 	// if()
+			// 	// ram_addr_x = 
+			// end
 		end
 	endcase 
 end //end comb

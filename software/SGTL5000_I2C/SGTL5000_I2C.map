@@ -73,7 +73,7 @@ Memory Configuration
 
 Name             Origin             Length             Attributes
 reset            0x0000000000004000 0x0000000000000020
-onchip_memory2_0 0x0000000000004020 0x0000000000003fe0
+onchip_memory2_0 0x0000000000004020 0x0000000000002fe0
 *default*        0x0000000000000000 0xffffffffffffffff
 
 Linker script and memory map
@@ -909,11 +909,11 @@ LOAD c:/intelfpga_lite/18.1/nios2eds/bin/gnu/h-x86_64-mingw32/bin/../lib/gcc/nio
                 0x0000000000000000       0x10 ../SGTL5000_I2C_bsp//obj/HAL/src/crt0.o
  .debug_alt_sim_info
                 0x0000000000000010       0x30 ../SGTL5000_I2C_bsp/\libhal_bsp.a(alt_busy_sleep.o)
-                0x0000000000008000                __alt_data_end = 0x8000
-                0x0000000000008000                PROVIDE (__alt_stack_pointer, __alt_data_end)
+                0x0000000000007000                __alt_data_end = 0x7000
+                0x0000000000007000                PROVIDE (__alt_stack_pointer, __alt_data_end)
                 [!provide]                        PROVIDE (__alt_stack_limit, __alt_stack_base)
                 [!provide]                        PROVIDE (__alt_heap_start, end)
-                [!provide]                        PROVIDE (__alt_heap_limit, 0x8000)
+                [!provide]                        PROVIDE (__alt_heap_limit, 0x7000)
 OUTPUT(SGTL5000_I2C.elf elf32-littlenios2)
 
 .debug_ranges   0x0000000000000000      0x340

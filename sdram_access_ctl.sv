@@ -25,7 +25,7 @@ module sdram_access_ctl(
 
     output logic ack_out_1,
     output logic ack_out_2,
-    output logic ack_out_write,
+    output logic ack_out_write_o,
     output logic [15:0]   readdata_out_1,
     output logic [15:0]   readdata_out_2
 );
@@ -33,17 +33,20 @@ module sdram_access_ctl(
 logic saved_rden, next_rden;
 logic op_wr_override, next_op_wr_override;
 logic saved_read_half, next_read_half;
+logic ack_out_write;
 
 always_ff @( posedge clk50 or posedge reset) begin
     if(reset) begin
         saved_rden <= 1'b0;
         op_wr_override <= 1'b0;
         saved_read_half <= 1'b1;    // Start at "top half" so that resume triggers on start.
+        sd_write_resume <= 1'b1;
     end
     else begin
         saved_rden = next_rden;
         op_wr_override <= next_op_wr_override;
         saved_read_half <= next_read_half;
+        sd_write_resume <= (saved_read_half == (~next_read_half));
     end
 end
 
@@ -58,7 +61,7 @@ begin
     ack_out_write = 1'b0;
     readdata_out_1 = 16'h0;
     readdata_out_2 = 16'h0;
-    next_rden = saved_rden;
+    next_rden = 1'b0;
     next_op_wr_override = op_wr_override;
     next_read_half = saved_read_half;
 
@@ -67,8 +70,10 @@ begin
             addr_out_toavl  = addr_in_write;
             write_out_toavl = write_in;
             ack_out_write   = ack_in_toavl;
+            next_rden = 1'b0;
             if(ack_in_toavl) begin
                 next_op_wr_override = 1'b0;
+                write_out_toavl = 1'b0;
             end
         end
         1'b0 : begin
@@ -78,6 +83,7 @@ begin
                         addr_out_toavl  = addr_in_write;
                         write_out_toavl = write_in;
                         ack_out_write   = ack_in_toavl;
+                        next_rden = 1'b0;
                     end
                 1'b0    :
                     begin   // 1 of the 2 read peripherals controls bus
@@ -117,6 +123,34 @@ begin
     end
 end
 
-assign sd_write_resume = (saved_read_half == (~next_read_half));
+assign ack_out_write_o = ack_out_write_reg;
+
+logic ack_out_write_reg, ack_out_write_reg_next;
+logic [2:0] ack_out_write_counter, ack_out_write_counter_next;
+
+always_ff @( posedge clk50 or posedge reset) begin
+    if(reset) begin
+        ack_out_write_reg <= 1'b0;
+        ack_out_write_counter <= 1'b0;
+    end
+    else begin
+        ack_out_write_reg <= ack_out_write_reg_next;
+        ack_out_write_counter <= ack_out_write_counter_next;
+    end
+end
+
+always_comb begin
+    ack_out_write_counter_next = ack_out_write_counter;
+    ack_out_write_reg_next = ack_out_write_reg;
+    if(ack_out_write) begin
+        ack_out_write_reg_next = 1'b1;
+        ack_out_write_counter_next = ack_out_write_counter + 1;
+    end
+    if(ack_out_write_counter >= 5)begin
+        ack_out_write_reg_next = 1'b0;
+        ack_out_write_counter_next = 0;
+    end
+end
+
 
 endmodule

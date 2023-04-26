@@ -79,7 +79,7 @@ module player_toplevel (
 	logic AVL_BR_WREN, SD_MODULE_WE;		//write-enable?
 	logic AVL_BR_RDEN, VIDASIC_RDEN, AUDASIC_RDEN;	// read-enables
 	logic RAM_INIT_DONE_SIG;
-	logic RAM_INIT_CONTINUE_SIG;
+	logic RAM_INIT_HALF;
 
 
 //=======================================================
@@ -273,7 +273,7 @@ module player_toplevel (
 			.ram_status_light(),
 			.ram_init_error(LEDR[9]), //error initializing
 			.ram_init_done(RAM_INIT_DONE_SIG),  //done with reading all MAX_RAM_ADDRESS words
-			.ram_init_continue(RAM_INIT_CONTINUE_SIG),
+			.ram_init_half(RAM_INIT_HALF),
 			.cs_bo(SPI0_CS_N), //SD card pins (also make sure to disable USB CS if using DE10-Lite)
 			.sclk_o(SPI0_SCLK),
 			.mosi_o(SPI0_MOSI),
@@ -286,11 +286,11 @@ module player_toplevel (
 			.hex_out_0(HEX_NUM_0_LOAD)
 	);
 
-	sdram_access_ctl sdram_bus_arbit(
+	sdram_access_ctl_contload sdram_bus_arbit(
 			.clk50(MAX10_CLK1_50),
 			.reset(Reset_h),
 			.sw_write_override(WRITE_OVERRIDE_STATE),      // literal switch signal for write to take precedence
-			.sd_write_resume(RAM_INIT_CONTINUE_SIG),
+			.sd_write_half(RAM_INIT_HALF),
 			.sw_rd_1en(SW9_SYNC),              // switch signal for '1' to read
     // signals for the avl bus master (to SDRAM controller)
     		.addr_out_toavl(AVL_BR_ADDR),
@@ -310,7 +310,7 @@ module player_toplevel (
 
     		.ack_out_1(VIDASIC_ACK),
     		.ack_out_2(AUDASIC_ACK),
-    		.ack_out_write(SD_MODULE_ACK),
+    		.ack_out_write_o(SD_MODULE_ACK),
     		.readdata_out_1(VIDASIC_RDDATA),
     		.readdata_out_2(AUDASIC_RDDATA)
 	);

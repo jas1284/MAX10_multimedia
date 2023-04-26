@@ -4,7 +4,7 @@
  * Machine generated for CPU 'nios2_gen2_0' in SOPC Builder design 'ZFsoc'
  * SOPC Builder design path: ../../ZFsoc.sopcinfo
  *
- * Generated: Mon Apr 24 04:01:23 CDT 2023
+ * Generated: Tue Apr 25 18:34:38 CDT 2023
  */
 
 /*
@@ -66,7 +66,7 @@
  */
 
 #define ONCHIP_MEMORY2_0_REGION_BASE 0x4020
-#define ONCHIP_MEMORY2_0_REGION_SPAN 16352
+#define ONCHIP_MEMORY2_0_REGION_SPAN 12256
 #define RESET_REGION_BASE 0x4000
 #define RESET_REGION_SPAN 32
 
