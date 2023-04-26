@@ -48,6 +48,7 @@ module I2S_interface_R2 (
 	assign hex_out_5 = READ_ADDR[23:20];
 
 	parameter BIT_DEPTH = 16;	// Assume this much, lol. We don't have a good way to deal with it otherwise!
+	parameter VOLUME_SHIFT = 6; // how many bits to shift to preserve hearing?
 
 	enum logic [12:0] 
     {q_shift, 
@@ -285,21 +286,25 @@ module I2S_interface_R2 (
 				end
 				left_data : begin
 					I2S_DIN = BITQUEUE[47];
-					shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+					if(I2S_counter >= VOLUME_SHIFT) begin
+						shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+						// Only shift if we are above the volume.
+						// Should also nicely sign-extend when reducing amplitude.
+					end
 					I2S_count_next = I2S_counter + 1;
 					if(I2S_counter == 0) begin
 						next_sign_bit = BITQUEUE[47];
 					end
-					else if(I2S_counter >= 31) begin
+					else if(I2S_counter >= 31) begin	// This shouldn't happen, will probably screw up.
 						I2S_count_next = 0;
 						I2S_nextstate = right_dummy;
 					end
-					else if (I2S_counter >= BIT_DEPTH) begin
+					else if (I2S_counter >= (BIT_DEPTH + VOLUME_SHIFT - 1)) begin
 						I2S_count_next = 0;
 						I2S_nextstate = left_pad;
 					end
 				end
-				left_pad : begin
+				left_pad : begin	// Should pad regardless of volume shift.
 					I2S_count_next = 0;
 					I2S_DIN = saved_sign_bit;
 					if(I2S_LRCLK & (~LRCLK_saved)) begin
@@ -315,7 +320,10 @@ module I2S_interface_R2 (
 				end
 				right_data : begin
 					I2S_DIN = BITQUEUE[47];
-					shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+					if(I2S_counter >= VOLUME_SHIFT) begin
+						shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+						// Only shift if we are above the volume.
+					end
 					I2S_count_next = I2S_counter + 1;
 					if(I2S_counter == 0) begin
 						next_sign_bit = BITQUEUE[47];
@@ -324,7 +332,7 @@ module I2S_interface_R2 (
 						I2S_count_next = 0;
 						I2S_nextstate = left_dummy;
 					end
-					else if (I2S_counter >= BIT_DEPTH) begin
+					else if (I2S_counter >= (BIT_DEPTH + VOLUME_SHIFT - 1)) begin
 						I2S_count_next = 0;
 						I2S_nextstate = right_pad;
 					end
