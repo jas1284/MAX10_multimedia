@@ -40,7 +40,7 @@ module I2S_interface_R2 (
 	// logic [4:0]  write_counter; //  = 16;
 	// logic endian = 1;
 	
-	assign hex_out_0 = READ_ADDR[3:0];
+	// assign hex_out_0 = READ_ADDR[3:0];
 	assign hex_out_1 = READ_ADDR[7:4];
 	assign hex_out_2 = READ_ADDR[11:8];
 	assign hex_out_3 = READ_ADDR[15:12];
@@ -108,7 +108,7 @@ module I2S_interface_R2 (
 			BITQUEUE <= 48'h0;
 			SHIFTCOUNT <= 6'h0;
 			queue_state <= q_load3;
-			READ_ADDR <= 25'h0A;    // A gets us to byte d20, which determines datatype
+			READ_ADDR <= 25'h0A;    // 0x0A gets us to byte d20, which determines datatype
 		end
 		else if(I2S_enable)
 		begin
@@ -242,8 +242,6 @@ module I2S_interface_R2 (
 	end
 
 
-	
-
 	always_ff @( posedge clk50 or posedge reset ) begin
 		if(reset) begin
 			shiftsig <= 1'b0;
@@ -256,6 +254,7 @@ module I2S_interface_R2 (
 	enum logic [7:0] 
     {start_determine_type,
 	pcm_start_wait,
+	pcm_start_wait_zerocount,	// Extra states for properly zeroing out the I2S_count.
 	left_dummy,
 	left_data,
 	left_pad,
@@ -263,6 +262,7 @@ module I2S_interface_R2 (
 	right_data,
 	right_pad,
 	IMA_ADPCM_start_wait,
+	IMA_ADPCM_start_wait_zerocount,
 	IMA_ADPCM_left,
 	IMA_ADPCM_left_zerocount,
 	IMA_ADPCM_right,
@@ -275,6 +275,9 @@ module I2S_interface_R2 (
 	logic I2S_go, I2S_go_next;
 	logic [8:0] I2S_counter, I2S_count_next;
 	logic ADPCM_CALC_L, ADPCM_CALC_R;
+	logic [3:0] playback_type, playback_type_next;
+
+	assign hex_out_0 = playback_type;
 
 	always_comb begin
 		// default values;
@@ -287,26 +290,37 @@ module I2S_interface_R2 (
 		I2S_go_next = 1'b0;
 		ADPCM_CALC_L = 1'b0;
 		ADPCM_CALC_R = 1'b0;
+		playback_type_next = playback_type;
 		if(Q_RDY & I2S_enable) begin
 			case (I2S_STATE)
 				start_determine_type : begin
 					I2S_count_next = 0;
 					case (BITQUEUE[47:32])	// These are endian-ness flipped due to wav stupidity.
-						16'h0001 : I2S_nextstate = pcm_start_wait;
-						16'h0011 : I2S_nextstate = IMA_ADPCM_start_wait;
-						default: ;
+						16'h0001 : begin 
+							I2S_nextstate = pcm_start_wait;
+							playback_type_next = 4'h1;	// Playback type display: 1 for basic PCM
+						end
+						16'h0011 : begin 
+							I2S_nextstate = IMA_ADPCM_start_wait;
+							playback_type_next = 4'hA;	// "A" for ADPCM!
+						end
+						default :;
+						// default: I2S_nextstate = pcm_start_wait_zerocount;
 					endcase			
 				end
 				pcm_start_wait : begin
-					if(I2S_counter < 9'd192) begin	// 192 bit-shifts to get into starting position.
-						shiftsig_next = I2S_SCLK;
-						I2S_count_next = I2S_counter + 1;
+					shiftsig_next = I2S_SCLK;
+					I2S_count_next = I2S_counter + 1;
+					if(I2S_counter >= 9'd192) begin	// 192 bit-shifts to get into starting position.
+						I2S_count_next = 0;
+						I2S_nextstate = pcm_start_wait_zerocount;
 					end
-					else begin
-						if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
-							I2S_go_next = 1'b1;
-						end
-					end
+				end
+				pcm_start_wait_zerocount : begin
+					I2S_count_next = 0;
+					if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
+						I2S_go_next = 1'b1;
+					end				
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
 						I2S_count_next = 0;
 						I2S_nextstate = left_data;
@@ -380,15 +394,18 @@ module I2S_interface_R2 (
 					end
 				end
 				IMA_ADPCM_start_wait : begin
-					if(I2S_counter < 9'd192) begin	// 192 bit-shifts to get into starting position.
-						shiftsig_next = I2S_SCLK;
-						I2S_count_next = I2S_counter + 1;
+					shiftsig_next = I2S_SCLK;
+					I2S_count_next = I2S_counter + 1;
+					if(I2S_counter >= 9'd192) begin	// 192 bit-shifts to get into starting position.
+						I2S_count_next = 0;
+						I2S_nextstate = IMA_ADPCM_start_wait_zerocount;
 					end
-					else begin
-						if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
-							I2S_go_next = 1'b1;
-						end
-					end
+				end
+				IMA_ADPCM_start_wait_zerocount : begin
+					I2S_count_next = 0;
+					if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
+						I2S_go_next = 1'b1;
+					end				
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
 						I2S_count_next = 0;
 						ADPCM_CALC_L = 1'b1;
@@ -460,6 +477,7 @@ module I2S_interface_R2 (
 			LRCLK_saved <= 1'b0;
 			I2S_counter <= 9'b0;
 			saved_sign_bit <= 1'b0;
+			playback_type <= 1'b0;	// Default to 0
 			// I2S_go <= 1'b0;
 		end
 		else begin
@@ -467,6 +485,7 @@ module I2S_interface_R2 (
 			LRCLK_saved <= I2S_LRCLK;
 			I2S_counter <= I2S_count_next;
 			saved_sign_bit <= next_sign_bit;
+			playback_type <= playback_type_next;
 		end
 	end
 
