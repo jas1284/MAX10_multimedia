@@ -256,13 +256,17 @@ module I2S_interface_R2 (
 	enum logic [7:0] 
     {start_determine_type,
 	pcm_start_wait,
-	IMA_ADPCM_start_wait,
 	left_dummy,
 	left_data,
 	left_pad,
 	right_dummy,
 	right_data,
-	right_pad
+	right_pad,
+	IMA_ADPCM_start_wait,
+	IMA_ADPCM_left,
+	IMA_ADPCM_left_zerocount,
+	IMA_ADPCM_right,
+	IMA_ADPCM_right_zerocount
     } I2S_STATE, I2S_nextstate;
 
 	logic shiftsig, shiftsig_next;
@@ -270,6 +274,7 @@ module I2S_interface_R2 (
 	logic LRCLK_saved, LRCLK_next;
 	logic I2S_go, I2S_go_next;
 	logic [8:0] I2S_counter, I2S_count_next;
+	logic ADPCM_CALC_L, ADPCM_CALC_R;
 
 	always_comb begin
 		// default values;
@@ -280,6 +285,8 @@ module I2S_interface_R2 (
 		next_sign_bit = saved_sign_bit;
 		shiftsig_next = 1'b0;
 		I2S_go_next = 1'b0;
+		ADPCM_CALC_L = 1'b0;
+		ADPCM_CALC_R = 1'b0;
 		if(Q_RDY & I2S_enable) begin
 			case (I2S_STATE)
 				start_determine_type : begin
@@ -372,6 +379,77 @@ module I2S_interface_R2 (
 						I2S_nextstate = left_data;
 					end
 				end
+				IMA_ADPCM_start_wait : begin
+					if(I2S_counter < 9'd192) begin	// 192 bit-shifts to get into starting position.
+						shiftsig_next = I2S_SCLK;
+						I2S_count_next = I2S_counter + 1;
+					end
+					else begin
+						if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
+							I2S_go_next = 1'b1;
+						end
+					end
+					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
+						I2S_count_next = 0;
+						ADPCM_CALC_L = 1'b1;
+						I2S_nextstate = IMA_ADPCM_left;
+					end
+				end
+				IMA_ADPCM_left : begin
+					I2S_DIN = ADPCM_SAMPLE_L[15];
+					if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter <  (BIT_DEPTH + VOLUME_SHIFT - 1))) begin
+						I2S_DIN = ADPCM_SAMPLE_L[15 - (I2S_counter - VOLUME_SHIFT)];
+						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+						// Only shift if we are above the volume.
+						// Should also nicely sign-extend when reducing amplitude.
+					end
+					if(I2S_counter < 4) begin
+						shiftsig_next = I2S_SCLK;
+					end
+					I2S_count_next = I2S_counter + 1;
+					if(I2S_counter >= (BIT_DEPTH + VOLUME_SHIFT - 1)) begin
+						I2S_nextstate = IMA_ADPCM_left_zerocount;
+					end
+				end
+				IMA_ADPCM_left_zerocount : begin
+					I2S_DIN = ADPCM_SAMPLE_L[15];
+					I2S_count_next = 0;
+					if(I2S_LRCLK & (~LRCLK_saved)) begin
+						I2S_go_next = 1'b1;
+					end
+					if(I2S_go) begin
+						I2S_nextstate = IMA_ADPCM_right;
+						ADPCM_CALC_R = 1'b1;
+					end
+				end
+				IMA_ADPCM_right : begin
+					I2S_DIN = ADPCM_SAMPLE_R[15];
+					if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter <  (BIT_DEPTH + VOLUME_SHIFT - 1))) begin
+						I2S_DIN = ADPCM_SAMPLE_R[15 - (I2S_counter - VOLUME_SHIFT)];
+						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
+						// Only shift if we are above the volume.
+						// Should also nicely sign-extend when reducing amplitude.
+					end
+					if(I2S_counter < 4) begin
+						shiftsig_next = I2S_SCLK;
+					end
+					I2S_count_next = I2S_counter + 1;
+					if(I2S_counter >= (BIT_DEPTH + VOLUME_SHIFT - 1)) begin
+						I2S_nextstate = IMA_ADPCM_right_zerocount;
+					end
+				end
+				IMA_ADPCM_right_zerocount : begin
+					I2S_DIN = ADPCM_SAMPLE_R[15];
+					I2S_count_next = 0;
+					if((~I2S_LRCLK) & LRCLK_saved) begin
+						I2S_go_next = 1'b1;
+					end
+					if(I2S_go) begin
+						I2S_nextstate = IMA_ADPCM_left;
+						I2S_count_next = 0;
+						ADPCM_CALC_L = 1'b1;
+					end
+				end
 				default: ;
 			endcase
 		end
@@ -428,5 +506,187 @@ module I2S_interface_R2 (
 		end
 	end
 
+	// ADPCM calculating stuff for Left-side
+	shortint ADPCM_SAMPLE_L, ADPCM_PREVSAMPLE_L, ADPCM_PREVSAMPLE_L_next;
+	int ADPCM_SAMPLE_L_next;
+	logic ADPCM_CALC_L_STATE, ADPCM_CALC_L_STATE_next;	// This is the state
+	shortint step_index_L, step_index_L_next;
+	int diff_L;
+	logic sign;
+
+	logic [3:0] nibble;
+	assign nibble = BITQUEUE[47:44];
+	assign sign = BITQUEUE[47];
+
+	shortint step_L;
+	assign step_L = ima_step_table[step_index_L];
+
+	always_comb begin
+		diff_L = step_L >> 3;
+		if(nibble[2])
+			diff_L = diff_L + step_L;
+		if(nibble[1])
+			diff_L = diff_L + (step_L >> 1);
+		if(nibble[0])
+			diff_L = diff_L + (step_L >> 2);
+	end
+
+	always_comb begin
+		ADPCM_CALC_L_STATE_next = ADPCM_CALC_L_STATE;
+		ADPCM_PREVSAMPLE_L_next = ADPCM_PREVSAMPLE_L;
+		ADPCM_SAMPLE_L_next[15:0] = ADPCM_SAMPLE_L;
+		ADPCM_SAMPLE_L_next[31:16] = 16'h0;
+		step_index_L_next = step_index_L;
+		// predictor_next = predictor_saved;
+		case (ADPCM_CALC_L_STATE) 
+			1'b1 : begin	// Wait for signal to deassert.
+				if(~ADPCM_CALC_L)begin
+					ADPCM_CALC_L_STATE_next = 1'b0;	// Arm to wait for next assert
+				end
+			end
+			1'b0 : 	begin	// Await activation
+				if(ADPCM_CALC_L)	begin	// if called upon
+					ADPCM_CALC_L_STATE_next = 1'b1;
+					ADPCM_PREVSAMPLE_L_next = ADPCM_SAMPLE_L;
+					case (sign)
+						1'b1 : ADPCM_SAMPLE_L_next = ADPCM_SAMPLE_L_next - diff_L;
+						1'b0 : ADPCM_SAMPLE_L_next = ADPCM_SAMPLE_L_next + diff_L;
+						default: ;
+					endcase
+					// ADPCM_SAMPLE_L_next = ADPCM_PREVSAMPLE_L + diff_L;
+					if(ADPCM_SAMPLE_L_next > 32767) begin
+						ADPCM_SAMPLE_L_next = 32767;
+					end
+					else if(ADPCM_SAMPLE_L_next < -32768) begin
+						ADPCM_SAMPLE_L_next = -32768;
+					end
+
+					step_index_L_next = step_index_L + ima_index_table[nibble];
+					if(step_index_L_next >= 89) begin
+						step_index_L_next = 88;
+					end
+					else if (step_index_L_next < 0) begin
+						step_index_L_next = 0;
+					end
+				end
+			end
+			default: ;
+		endcase
+	end
+
+	always_ff @ (posedge clk50 or posedge reset) begin
+		if (reset) begin
+			ADPCM_SAMPLE_L <= 0;
+			ADPCM_PREVSAMPLE_L <= 0;
+			ADPCM_CALC_L_STATE <= 0;
+			step_index_L <= 0;
+		end
+		else begin
+			ADPCM_SAMPLE_L <= ADPCM_SAMPLE_L_next;
+			ADPCM_PREVSAMPLE_L <= ADPCM_PREVSAMPLE_L_next;
+			ADPCM_CALC_L_STATE <= ADPCM_CALC_L_STATE_next;
+			step_index_L <= step_index_L_next;
+		end
+	end
+
+	// ADPCM calculating stuff for R
+	shortint ADPCM_SAMPLE_R, ADPCM_PREVSAMPLE_R, ADPCM_PREVSAMPLE_R_next;
+	int ADPCM_SAMPLE_R_next;
+	logic ADPCM_CALC_R_STATE, ADPCM_CALC_R_STATE_next;	// This is the state
+	shortint step_index_R, step_index_R_next;
+	int diff_R;
+//	logic sign;
+
+//	logic [3:0] nibble;
+//	assign nibble = BITQUEUE[47:44];
+//	assign sign = BITQUEUE[47];
+
+	shortint step_R;
+	assign step_R = ima_step_table[step_index_R];
+
+	always_comb begin
+		diff_R = step_R >> 3;
+		if(nibble[2])
+			diff_R = diff_R + step_R;
+		if(nibble[1])
+			diff_R = diff_R + (step_R >> 1);
+		if(nibble[0])
+			diff_R = diff_R + (step_R >> 2);
+	end
+
+	always_comb begin
+		ADPCM_CALC_R_STATE_next = ADPCM_CALC_R_STATE;
+		ADPCM_PREVSAMPLE_R_next = ADPCM_PREVSAMPLE_R;
+		ADPCM_SAMPLE_R_next[15:0] = ADPCM_SAMPLE_R;
+		ADPCM_SAMPLE_R_next[31:16] = 16'h0;
+		step_index_R_next = step_index_R;
+		// predictor_next = predictor_saved;
+		case (ADPCM_CALC_R_STATE) 
+			1'b1 : begin	// Wait for signal to deassert.
+				if(~ADPCM_CALC_R)begin
+					ADPCM_CALC_R_STATE_next = 1'b0;	// Arm to wait for next assert
+				end
+			end
+			1'b0 : 	begin	// Await activation
+				if(ADPCM_CALC_R)	begin	// if called upon
+					ADPCM_CALC_R_STATE_next = 1'b1;
+					ADPCM_PREVSAMPLE_R_next = ADPCM_SAMPLE_R;
+					case (sign)
+						1'b1 : ADPCM_SAMPLE_R_next = ADPCM_SAMPLE_R_next - diff_R;
+						1'b0 : ADPCM_SAMPLE_R_next = ADPCM_SAMPLE_R_next + diff_R;
+						default: ;
+					endcase
+					// ADPCM_SAMPLE_R_next = ADPCM_PREVSAMPLE_R + diff_R;
+					if(ADPCM_SAMPLE_R_next > 32767) begin
+						ADPCM_SAMPLE_R_next = 32767;
+					end
+					else if(ADPCM_SAMPLE_R_next < -32768) begin
+						ADPCM_SAMPLE_R_next = -32768;
+					end
+
+					step_index_R_next = step_index_R + ima_index_table[nibble];
+					if(step_index_R_next >= 89) begin
+						step_index_R_next = 88;
+					end
+					else if (step_index_R_next < 0) begin
+						step_index_R_next = 0;
+					end
+					
+				end
+			end
+			default: ;
+		endcase
+	end
+
+	always_ff @ (posedge clk50 or posedge reset) begin
+		if (reset) begin
+			ADPCM_SAMPLE_R <= 0;
+			ADPCM_PREVSAMPLE_R <= 0;
+			ADPCM_CALC_R_STATE <= 0;
+			step_index_R <= 0;
+		end
+		else begin
+			ADPCM_SAMPLE_R <= ADPCM_SAMPLE_R_next;
+			ADPCM_PREVSAMPLE_R <= ADPCM_PREVSAMPLE_R_next;
+			ADPCM_CALC_R_STATE <= ADPCM_CALC_R_STATE_next;
+			step_index_R <= step_index_R_next;
+		end
+	end
+
+	shortint ima_index_table[16] = '{
+			-1, -1, -1, -1, 2, 4, 6, 8,
+			-1, -1, -1, -1, 2, 4, 6, 8
+			};
+	shortint ima_step_table[89] = '{ 
+		7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 
+		19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
+		50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 
+		130, 143, 157, 173, 190, 209, 230, 253, 279, 307,
+		337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+		876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 
+		2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
+		5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 
+		15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767 
+		}; 
 	
 endmodule
