@@ -473,13 +473,16 @@ module I2S_interface_R2 (
 					// 	I2S_nextstate = g711_left_zerocount;
 					// end
 					// if (index_counter != 0) begin
-					I2S_DIN = g711_sample[13 - index_counter];
-					// end
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - index_counter];
+					end
+					else
+						I2S_DIN = g711_sample[13];
 					index_counter_next = index_counter + 1;
 					if(index_counter < 8) begin	// Allow for 8 shifts - to dump the compressed sample.
 						shiftsig_next = I2S_SCLK;
 					end
-					if(index_counter > 13) begin
+					if(index_counter >= (13 + VOLUME_SHIFT)) begin
 						I2S_nextstate = g711_left_zerocount;
 					end
 				end
@@ -511,14 +514,16 @@ module I2S_interface_R2 (
 					// if(index_counter >= (14 + VOLUME_SHIFT - 1)) begin
 					// 	I2S_nextstate = g711_right_zerocount;
 					// end
-					// if (index_counter != 0) begin
-					I2S_DIN = g711_sample[13 - index_counter];
-					// end
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - index_counter];
+					end
+					else
+						I2S_DIN = g711_sample[13];
 					index_counter_next = index_counter + 1;
 					if(index_counter < 8) begin	// Allow for 8 shifts - to dump the compressed sample.
 						shiftsig_next = I2S_SCLK;
 					end
-					if(index_counter > 13) begin
+					if(index_counter >= (13 + VOLUME_SHIFT)) begin
 						I2S_nextstate = g711_right_zerocount;
 					end
 				end
@@ -549,29 +554,43 @@ module I2S_interface_R2 (
 					end				
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
 						I2S_count_next = 0;
+						index_counter_next = 0;
 						ADPCM_CALC_L = 1'b1;
 						I2S_nextstate = IMA_ADPCM_left;
 					end
 				end
 				IMA_ADPCM_left : begin
-					I2S_DIN = ADPCM_L_READOUT[11];
-					if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (12 + VOLUME_SHIFT - 1))) begin
-						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+					end
+					else
+						I2S_DIN = ADPCM_L_READOUT[11];
+					index_counter_next = index_counter + 1;
+					if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
+						shiftsig_next = I2S_SCLK;
+					end
+					if(index_counter >= 11 + VOLUME_SHIFT) begin
+						I2S_nextstate = IMA_ADPCM_left_zerocount;
+					end
+					// I2S_DIN = ADPCM_L_READOUT[11];
+					// if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (12 + VOLUME_SHIFT - 1))) begin
+					// 	I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
 						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
 						// Only shift if we are above the volume.
 						// Should also nicely sign-extend when reducing amplitude.
-					end
-					if(I2S_counter < 5) begin
-						shiftsig_next = I2S_SCLK;
-					end
-					I2S_count_next = I2S_counter + 1;
-					if(I2S_counter >= (12 + VOLUME_SHIFT - 1)) begin
-						I2S_nextstate = IMA_ADPCM_left_zerocount;
-					end
+					// end
+					// if(I2S_counter < 5) begin
+					// 	shiftsig_next = I2S_SCLK;
+					// end
+					// I2S_count_next = I2S_counter + 1;
+					// if(I2S_counter >= (12 + VOLUME_SHIFT - 1)) begin
+					// 	I2S_nextstate = IMA_ADPCM_left_zerocount;
+					// end
 				end
 				IMA_ADPCM_left_zerocount : begin
 					I2S_DIN = ADPCM_SAMPLE_L[11];
 					I2S_count_next = 0;
+					index_counter_next = 0;
 					if(I2S_LRCLK & (~LRCLK_saved)) begin
 						I2S_go_next = 1'b1;
 					end
@@ -581,24 +600,24 @@ module I2S_interface_R2 (
 					end
 				end
 				IMA_ADPCM_right : begin
-					I2S_DIN = ADPCM_L_READOUT[11];
-					if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (12 + VOLUME_SHIFT - 1))) begin
-						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
-						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
-						// Only shift if we are above the volume.
-						// Should also nicely sign-extend when reducing amplitude.
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - index_counter];
 					end
-					// if(I2S_counter < 5) begin
+					else
+						I2S_DIN = ADPCM_L_READOUT[11];
+					index_counter_next = index_counter + 1;
+					// Do not shift again, since it's MONO!
+					// if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
 					// 	shiftsig_next = I2S_SCLK;
-					// end
-					I2S_count_next = I2S_counter + 1;
-					if(I2S_counter >= (12 + VOLUME_SHIFT - 1)) begin
+					// end	
+					if(index_counter >= 11 + VOLUME_SHIFT) begin
 						I2S_nextstate = IMA_ADPCM_right_zerocount;
 					end
 				end
 				IMA_ADPCM_right_zerocount : begin
 					I2S_DIN = ADPCM_SAMPLE_L[11];
 					I2S_count_next = 0;
+					index_counter_next = 0;
 					if((~I2S_LRCLK) & LRCLK_saved) begin
 						I2S_go_next = 1'b1;
 					end
@@ -802,6 +821,7 @@ module I2S_interface_R2 (
 							if(sign) begin	// Change from signed-magnitude to 2s-complement
 								g711_sample_next = (14'b10000000000000 - g711_sample_next);
 							end
+							g711_sample_next[0] = g711_sample_next[13];
 						end
 						default: ;
 					endcase
@@ -886,7 +906,7 @@ module I2S_interface_R2 (
 						step_index_L_next = 0;
 					end
 					// step_L_next = step_L + ((11 * vox_ADPCM_step_table[step_index_L_next])/10);
-					step_L_next = vox_ADPCM_step_table[step_index_L_next];
+					step_L_next = step_L + vox_ADPCM_step_table[step_index_L_next];
 				end
 			end
 			default: ;
