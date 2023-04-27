@@ -108,7 +108,7 @@ module I2S_interface_R2 (
 			BITQUEUE <= 48'h0;
 			SHIFTCOUNT <= 6'h0;
 			queue_state <= q_load3;
-			READ_ADDR <= 25'h2C;    // Skips the 44-byte long header file
+			READ_ADDR <= 25'h0A;    // A gets us to byte d20, which determines datatype
 		end
 		else if(I2S_enable)
 		begin
@@ -254,7 +254,9 @@ module I2S_interface_R2 (
 	end
 
 	enum logic [7:0] 
-    {start_wait,
+    {start_determine_type,
+	pcm_start_wait,
+	IMA_ADPCM_start_wait,
 	left_dummy,
 	left_data,
 	left_pad,
@@ -267,7 +269,7 @@ module I2S_interface_R2 (
 	logic saved_sign_bit, next_sign_bit;
 	logic LRCLK_saved, LRCLK_next;
 	logic I2S_go, I2S_go_next;
-	logic [5:0] I2S_counter, I2S_count_next;
+	logic [8:0] I2S_counter, I2S_count_next;
 
 	always_comb begin
 		// default values;
@@ -280,11 +282,26 @@ module I2S_interface_R2 (
 		I2S_go_next = 1'b0;
 		if(Q_RDY & I2S_enable) begin
 			case (I2S_STATE)
-				start_wait : begin
-					if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
-						I2S_go_next = 1'b1;
+				start_determine_type : begin
+					I2S_count_next = 0;
+					case (BITQUEUE[47:32])	// These are endian-ness flipped due to wav stupidity.
+						16'h0001 : I2S_nextstate = pcm_start_wait;
+						16'h0011 : I2S_nextstate = IMA_ADPCM_start_wait;
+						default: ;
+					endcase			
+				end
+				pcm_start_wait : begin
+					if(I2S_counter < 9'd192) begin	// 192 bit-shifts to get into starting position.
+						shiftsig_next = I2S_SCLK;
+						I2S_count_next = I2S_counter + 1;
+					end
+					else begin
+						if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
+							I2S_go_next = 1'b1;
+						end
 					end
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
+						I2S_count_next = 0;
 						I2S_nextstate = left_data;
 					end
 				end
@@ -363,7 +380,7 @@ module I2S_interface_R2 (
 	always_ff @ (posedge I2S_SCLK or posedge reset) begin
 		if(reset) begin
 			LRCLK_saved <= 1'b0;
-			I2S_counter <= 5'b0;
+			I2S_counter <= 9'b0;
 			saved_sign_bit <= 1'b0;
 			// I2S_go <= 1'b0;
 		end
@@ -402,7 +419,7 @@ module I2S_interface_R2 (
 		if(reset) begin
 			// LRCLK_saved <= 1'b0;
 			// I2S_DIN <= 1'b0;
-			I2S_STATE <= start_wait;
+			I2S_STATE <= start_determine_type;
 		end
 		else if(Q_RDY & I2S_enable) begin
 			// LRCLK_saved <= LRCLK_next;
