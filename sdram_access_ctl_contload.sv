@@ -48,7 +48,7 @@ always_ff @( posedge clk50 or posedge reset) begin
         saved_rden = next_rden;
         op_wr_override <= next_op_wr_override;
         saved_read_half <= next_read_half;
-        sd_write_half <= ~next_read_half;
+        sd_write_half <= ~next_read_half;   // indicates which half of RAM that the SDcard loader writes to
         ctl_state <= ctl_nextstate;
     end
 end
@@ -93,7 +93,7 @@ begin
         end
         read_1 : begin
             addr_out_toavl  = addr_in_1;
-            next_read_half = addr_in_1[23];
+            next_read_half = addr_in_1[24];
             read_out_toavl  = read_in_1;
             next_rden = read_in_1;
             readdata_out_1  = rddata_in_toavl;
@@ -108,7 +108,7 @@ begin
         end
         read_2 : begin
             addr_out_toavl  = addr_in_2;
-            next_read_half = addr_in_2[23];
+            next_read_half = addr_in_2[24];
             read_out_toavl  = read_in_2;
             next_rden = read_in_2;
             readdata_out_2  = rddata_in_toavl;
@@ -125,8 +125,20 @@ begin
             addr_out_toavl  = addr_in_write;
             write_out_toavl = write_in;
             ack_out_write_o   = ack_in_toavl;
-            if(ack_in_toavl) begin
-                ctl_nextstate = interleave_deassert;
+            if(write_in) begin
+                if(ack_in_toavl) begin
+                    ctl_nextstate = interleave_deassert;
+                end
+            end
+            else begin  // If no pending writes, give the reads a chance
+                if(sw_rd_1en)begin  // 1 gets precedence
+                    if(read_in_1)   // if 1 wants to read, let it read!
+                        ctl_nextstate = read_1;
+                end
+                else begin
+                    if(read_in_2)
+                        ctl_nextstate = read_2;
+                end
             end
         end
         interleave_deassert : begin
@@ -134,11 +146,14 @@ begin
             write_out_toavl = write_in;
             ack_out_write_o   = ack_in_toavl;
             if(~ack_in_toavl) begin
-                if(sw_rd_1en)begin
-                    ctl_nextstate = read_1;
+                ctl_nextstate = write_interleave;   // Do another write if no pending reads.
+                if(sw_rd_1en)begin  // 1 gets precedence
+                    if(read_in_1)   // if 1 wants to read, let it read!
+                        ctl_nextstate = read_1;
                 end
                 else begin
-                    ctl_nextstate = read_2;
+                    if(read_in_2)
+                        ctl_nextstate = read_2;
                 end
             end
         end

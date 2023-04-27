@@ -71,7 +71,8 @@ module I2S_interface_R2 (
 
 	// Values for Ram buffering logic
 	logic RAM_DATA_BUFFER_EN; // Flag for enabling the RAM_DATA_BUFFER.
-	logic RAM_DATA_BUFFER_STATE; // Buffered state for operation of RAM data buffer. 
+	// logic RAM_DATA_RDEN;	// RDEN for the ram buffering logic... synonymous with the state it seems
+	reg RAM_DATA_BUFFER_STATE; // Buffered state for operation of RAM data buffer. 
 	logic [15:0]    RAM_BUFFERED_READBACK;
 
 	// Ram readback buffering mechanism - makes sure we don't miss data.
@@ -79,19 +80,26 @@ module I2S_interface_R2 (
 	begin
 		if(reset)
 		begin
+			// RAM_DATA_RDEN <= 1'b0;
 			RAM_BUFFERED_READBACK <= 16'h0;
 			RAM_DATA_BUFFER_STATE <= 1'b0;  // state: inactive
 		end
 		else if(RAM_DATA_BUFFER_STATE)  // If active state...
 		begin
+			// RAM_DATA_RDEN <= 1'b1;
 			if(avalon_bridge_acknowledge) begin
 				RAM_BUFFERED_READBACK <= RDdata_PRGM;
-				RAM_DATA_BUFFER_STATE <= 0; // go back to inactive/unarmed state.
+				RAM_DATA_BUFFER_STATE <= 1'b0; // go back to inactive/unarmed state.
 			end
 		end
-		else
+		else	// Inactive state
+			// RAM_DATA_RDEN <= 1'b0;
 			RAM_DATA_BUFFER_STATE <= RAM_DATA_BUFFER_EN;    // Wait to be activated.
 	end
+
+	logic RDEN_override;
+	// assign RAM_DATA_RDEN = RAM_DATA_BUFFER_STATE;
+	assign RDen = (RAM_DATA_BUFFER_STATE |RDEN_override);
 
 	always_ff @ (posedge clk50 or posedge reset)
 	begin
@@ -118,7 +126,7 @@ module I2S_interface_R2 (
 		READ_ADDR_NEXT = READ_ADDR; // addr doesnt change
 		SHIFTCOUNT_NEXT = SHIFTCOUNT;   // shift-counter stays
 		ADDR_PRGM = READ_ADDR;       // Pre-set the ram address
-		RDen = 1'b0; 
+		RDEN_override = 1'b0; 
 		q_nextstate = queue_state;  // stay in current state
 		// status_1 = 1'b0;    // lights - blank em 
 		// status_2 = 1'b0;
@@ -140,9 +148,9 @@ module I2S_interface_R2 (
 					q_nextstate = q_shift;              // TESTING PURPOSE!
 					BITQ_NEXT = BITQUEUE << 1;          // shift the bitqueue, should be 1, 4 to test
 					SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;   // shift count increments, should be 1 (4 to test)
-					if(SHIFTCOUNT_NEXT >= 7) begin     // Note that since we're in a COMB thus must use shiftcount_next!
+					if(SHIFTCOUNT_NEXT >= 1) begin     // Note that since we're in a COMB thus must use shiftcount_next!
 						q_nextstate = q_prefetch;  // we need to top up the queue. 
-						RDen = 1'b1;        // Call upon RAM to send data.
+						// RDen = 1'b1;        // Call upon RAM to send data.
 						// ADDR_PRGM = READ_ADDR;
 						RAM_DATA_BUFFER_EN = 1'b1;  // Arm the RAM readback data buffer
 						// status_1 = 1'b1;
@@ -153,14 +161,14 @@ module I2S_interface_R2 (
 			end
 			q_prefetch: begin
 				Q_RDY = 1'b1;
-				RDen = 1'b1;
+				// RDen = 1'b1;
 				// status_1 = 1'b1;
 				if(shiftsig)
 					q_nextstate = q_prefetch_release;
 			end
 			q_prefetch_release: begin
 				Q_RDY = 1'b1;
-				RDen = 1'b1;
+				// RDen = 1'b1;
 				// status_1 = 1'b1;
 				if(~shiftsig)
 				begin
@@ -169,7 +177,7 @@ module I2S_interface_R2 (
 					SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;   // shift count increments, should be 1 (4 to test)
 					if(SHIFTCOUNT_NEXT >= 16) begin // If the buffer has disarmed, it must have caught data
 						q_nextstate = q_shift;  // we should be clear to return to normal operation.
-						RDen = 1'b0;    // let the RAM rest
+						// RDen = 1'b0;    // let the RAM rest
 						BITQ_NEXT[15:0] = RAM_BUFFERED_READBACK[15:0];    // PCM is Little-Endian - no flip needed.
 						// BITQ_NEXT[7:0] = RAM_BUFFERED_READBACK[15:8];
 						READ_ADDR_NEXT = READ_ADDR + 1;     // increment to next ram addr for next time.
@@ -178,18 +186,18 @@ module I2S_interface_R2 (
 				end
 			end
 			q_load1 : begin // load 1st word - most common
-				RDen = 1'b1;        // Call upon RAM to send data.
+				// RDen = 1'b1;        // Call upon RAM to send data.
 				// ADDR_PRGM = READ_ADDR;
 				RAM_DATA_BUFFER_EN = 1'b1;  // Arm the RAM readback data buffer
 				// status_1 = 1'b1;
 				q_nextstate = q_load1_wait;
 			end
 			q_load1_wait : begin
-				RDen = 1'b1;        // Call upon RAM to send data.
+				// RDen = 1'b1;        // Call upon RAM to send data.
 				// ADDR_PRGM = READ_ADDR;
 				if(RAM_DATA_BUFFER_STATE == 1'b0) begin // If the buffer has disarmed, it must have caught data
 					q_nextstate = q_shift;  // we should be clear to return to normal operation.
-					RDen = 1'b0;    // let the RAM rest
+					// RDen = 1'b0;    // let the RAM rest
 					BITQ_NEXT[15:0] = RAM_BUFFERED_READBACK[15:0];    // little-vs-big-endian tomfoolery
 					// BITQ_NEXT[7:0] = RAM_BUFFERED_READBACK[15:8];
 					READ_ADDR_NEXT = READ_ADDR + 1;     // increment to next ram addr for next time.
@@ -197,7 +205,7 @@ module I2S_interface_R2 (
 				// otherwise, we keep waiting, lol.
 			end
 			q_load3 : begin // load 3rd word
-				RDen = 1'b1;
+				RDEN_override = 1'b1;
 				// ADDR_PRGM = READ_ADDR;
 				if(avalon_bridge_acknowledge) begin
 					q_nextstate = q_load3_wait;
@@ -215,7 +223,7 @@ module I2S_interface_R2 (
 			end
 			q_load2  :  // load 2nd word
 			begin
-				RDen = 1'b1;
+				RDEN_override = 1'b1;
 				// ADDR_PRGM = READ_ADDR;
 				if(avalon_bridge_acknowledge) begin
 					q_nextstate = q_load2_wait;

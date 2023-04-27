@@ -1,6 +1,6 @@
-12:45:23 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+16:45:15 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
 make all 
 [BSP build complete]
 
-12:45:23 Build Finished (took 493ms)
+16:45:16 Build Finished (took 500ms)
 

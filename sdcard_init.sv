@@ -143,16 +143,19 @@ begin
 		READBLOCK: begin //send enable to start block read
 			if (ram_addr_r >= MAX_RAM_ADDRESS) //done with the whole range
 				ram_init_done = 1'b1; // state_x = DONE;
-			// else begin
-				// sd_block_addr_next = sd_block_addr_saved + 1;
-			sd_read_block = 1'b1; //start block read
-			if (sd_block_addr != 32'h00000000)
-				sd_continue = 1'b1;
-			if (sd_busy == 1'b1)
-				state_x = READH_0;
-			// end
-			if(ram_addr_r >= 36'h7FFFFFFFF)
-				state_x = DONE;
+			if(ram_addr_r[23] == ram_init_half)	begin // Only continue if we're in the authorized half.
+				// else begin
+					// sd_block_addr_next = sd_block_addr_saved + 1;
+				sd_read_block = 1'b1; //start block read
+				if (sd_block_addr != 32'h00000000)
+					sd_continue = 1'b1;
+				if (sd_busy == 1'b1)begin
+					state_x = READH_0;
+				end
+				// end
+				if(ram_addr_r >= 36'h7FFFFFFFF)
+					state_x = DONE;
+			end
 		end
 		READH_0: begin //read first byte (higher byte)
 			if (sd_busy == 1'b0) //busy going low signals end of block, read next block
