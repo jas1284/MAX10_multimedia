@@ -283,7 +283,7 @@ module I2S_interface_R2 (
 	logic I2S_go, I2S_go_next;
 	logic [8:0] I2S_counter, I2S_count_next;
 	logic [5:0] index_counter, index_counter_next;
-	logic ADPCM_CALC_L, ADPCM_CALC_R;
+	logic ADPCM_CALC_VOX, ADPCM_CALC_L, ADPCM_CALC_R;
 	logic [3:0] playback_type, playback_type_next;
 	logic g711_law_type, g711_law_type_next;	// 1 indicates u-law
 
@@ -298,7 +298,7 @@ module I2S_interface_R2 (
 		next_sign_bit = saved_sign_bit;
 		shiftsig_next = 1'b0;
 		I2S_go_next = 1'b0;
-		ADPCM_CALC_L = 1'b0;
+		ADPCM_CALC_VOX = 1'b0;
 		ADPCM_CALC_R = 1'b0;
 		g711_calc = 1'b0;
 		playback_type_next = playback_type;
@@ -555,16 +555,16 @@ module I2S_interface_R2 (
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
 						I2S_count_next = 0;
 						index_counter_next = 0;
-						ADPCM_CALC_L = 1'b1;
+						ADPCM_CALC_VOX = 1'b1;
 						I2S_nextstate = IMA_ADPCM_left;
 					end
 				end
 				IMA_ADPCM_left : begin
 					if(index_counter >= VOLUME_SHIFT) begin
-						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
 					end
 					else
-						I2S_DIN = ADPCM_L_READOUT[11];
+						I2S_DIN = ADPCM_VOX_READOUT[11];
 					index_counter_next = index_counter + 1;
 					if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
 						shiftsig_next = I2S_SCLK;
@@ -572,9 +572,9 @@ module I2S_interface_R2 (
 					if(index_counter >= 11 + VOLUME_SHIFT) begin
 						I2S_nextstate = IMA_ADPCM_left_zerocount;
 					end
-					// I2S_DIN = ADPCM_L_READOUT[11];
+					// I2S_DIN = ADPCM_VOX_READOUT[11];
 					// if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (12 + VOLUME_SHIFT - 1))) begin
-					// 	I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
+					// 	I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
 						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
 						// Only shift if we are above the volume.
 						// Should also nicely sign-extend when reducing amplitude.
@@ -588,7 +588,7 @@ module I2S_interface_R2 (
 					// end
 				end
 				IMA_ADPCM_left_zerocount : begin
-					I2S_DIN = ADPCM_SAMPLE_L[11];
+					I2S_DIN = ADPCM_SAMPLE_VOX[11];
 					I2S_count_next = 0;
 					index_counter_next = 0;
 					if(I2S_LRCLK & (~LRCLK_saved)) begin
@@ -601,10 +601,10 @@ module I2S_interface_R2 (
 				end
 				IMA_ADPCM_right : begin
 					if(index_counter >= VOLUME_SHIFT) begin
-						I2S_DIN = ADPCM_L_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
 					end
 					else
-						I2S_DIN = ADPCM_L_READOUT[11];
+						I2S_DIN = ADPCM_VOX_READOUT[11];
 					index_counter_next = index_counter + 1;
 					// Do not shift again, since it's MONO!
 					// if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
@@ -615,7 +615,7 @@ module I2S_interface_R2 (
 					end
 				end
 				IMA_ADPCM_right_zerocount : begin
-					I2S_DIN = ADPCM_SAMPLE_L[11];
+					I2S_DIN = ADPCM_SAMPLE_VOX[11];
 					I2S_count_next = 0;
 					index_counter_next = 0;
 					if((~I2S_LRCLK) & LRCLK_saved) begin
@@ -623,7 +623,7 @@ module I2S_interface_R2 (
 					end
 					if(I2S_go) begin
 						I2S_nextstate = IMA_ADPCM_left;
-						ADPCM_CALC_L = 1'b1;
+						ADPCM_CALC_VOX = 1'b1;
 					end
 				end
 				default: ;
@@ -843,70 +843,72 @@ module I2S_interface_R2 (
 	end
 
 
-	// ADPCM calculating stuff for Left-side
-	shortint ADPCM_SAMPLE_L; // , ADPCM_PREVSAMPLE_L, ADPCM_PREVSAMPLE_L_next;
-	shortint ADPCM_SAMPLE_L_next;
-	logic [11:0] ADPCM_L_READOUT;
-	assign ADPCM_L_READOUT = ADPCM_SAMPLE_L[11:0];
-	logic ADPCM_CALC_L_STATE, ADPCM_CALC_L_STATE_next;	// This is the state
-	shortint step_index_L, step_index_L_next;
-	shortint diff_L;
+	// ADPCM calculating stuff for VOX standard - mono, 4bits->12bits.
+	shortint ADPCM_SAMPLE_VOX; // , ADPCM_PREVSAMPLE_VOX, ADPCM_PREVSAMPLE_VOX_next;
+	shortint ADPCM_SAMPLE_VOX_next;
+	logic [11:0] ADPCM_VOX_READOUT;
+	assign ADPCM_VOX_READOUT = ADPCM_SAMPLE_VOX[11:0];
+	logic ADPCM_CALC_VOX_STATE, ADPCM_CALC_VOX_STATE_next;	// This is the state
+	shortint step_index_VOX, step_index_VOX_next;
+	shortint diff_VOX;
 	logic sign;
 
 	logic [3:0] nibble;
 	assign nibble = BITQUEUE[47:44];
 	assign sign = BITQUEUE[47];
 
-	shortint step_L, step_L_next;
+	shortint step_VOX, step_VOX_next;
 
 	always_comb begin
-		diff_L = 0;
-		ADPCM_CALC_L_STATE_next = ADPCM_CALC_L_STATE;
-		step_L_next = step_L;
-		// ADPCM_PREVSAMPLE_L_next = ADPCM_PREVSAMPLE_L;
-		ADPCM_SAMPLE_L_next = ADPCM_SAMPLE_L;
-		// ADPCM_SAMPLE_L_next[15:0] = ADPCM_SAMPLE_L;
-		// ADPCM_SAMPLE_L_next[31:16] = 16'h0;
-		step_index_L_next = step_index_L;
+		diff_VOX = 0;
+		ADPCM_CALC_VOX_STATE_next = ADPCM_CALC_VOX_STATE;
+		step_VOX_next = step_VOX;
+		// ADPCM_PREVSAMPLE_VOX_next = ADPCM_PREVSAMPLE_VOX;
+		ADPCM_SAMPLE_VOX_next = ADPCM_SAMPLE_VOX;
+		// ADPCM_SAMPLE_VOX_next[15:0] = ADPCM_SAMPLE_VOX;
+		// ADPCM_SAMPLE_VOX_next[31:16] = 16'h0;
+		step_index_VOX_next = step_index_VOX;
 		// predictor_next = predictor_saved;
-		case (ADPCM_CALC_L_STATE) 
+		case (ADPCM_CALC_VOX_STATE) 
 			1'b1 : begin	// Wait for signal to deassert.
-				if(~ADPCM_CALC_L)begin
-					ADPCM_CALC_L_STATE_next = 1'b0;	// Arm to wait for next assert
+				if(~ADPCM_CALC_VOX)begin
+					ADPCM_CALC_VOX_STATE_next = 1'b0;	// Arm to wait for next assert
 				end
 			end
 			1'b0 : 	begin	// Await activation
-				if(ADPCM_CALC_L)	begin	// if called upon
-					ADPCM_CALC_L_STATE_next = 1'b1;
-					step_index_L_next = step_index_L + ima_index_table[nibble];
-					// ADPCM_PREVSAMPLE_L_next = ADPCM_SAMPLE_L;
-					diff_L = step_L >> 3;
+				if(ADPCM_CALC_VOX)	begin	// if called upon
+					ADPCM_CALC_VOX_STATE_next = 1'b1;
+					step_index_VOX_next = step_index_VOX + ima_index_table[nibble];
+					// ADPCM_PREVSAMPLE_VOX_next = ADPCM_SAMPLE_VOX;
+					diff_VOX = step_VOX >> 3;
 					if(nibble[2])
-						diff_L = diff_L + step_L;
+						diff_VOX = diff_VOX + step_VOX;
 					if(nibble[1])
-						diff_L = diff_L + (step_L >> 1);
+						diff_VOX = diff_VOX + (step_VOX >> 1);
 					if(nibble[0])
-						diff_L = diff_L + (step_L >> 2);
+						diff_VOX = diff_VOX + (step_VOX >> 2);
 					case (sign)
-						1'b1 : ADPCM_SAMPLE_L_next = ADPCM_SAMPLE_L - diff_L;
-						1'b0 : ADPCM_SAMPLE_L_next = ADPCM_SAMPLE_L + diff_L;
+						1'b1 : ADPCM_SAMPLE_VOX_next = ADPCM_SAMPLE_VOX - diff_VOX;
+						1'b0 : ADPCM_SAMPLE_VOX_next = ADPCM_SAMPLE_VOX + diff_VOX;
 						default: ;
 					endcase
-					// ADPCM_SAMPLE_L_next = ADPCM_PREVSAMPLE_L + diff_L;
-					if(ADPCM_SAMPLE_L_next > 2047) begin
-						ADPCM_SAMPLE_L_next = 2047;
+					// ADPCM_SAMPLE_VOX_next = ADPCM_PREVSAMPLE_VOX + diff_VOX;
+					if(ADPCM_SAMPLE_VOX_next > 2047) begin
+						ADPCM_SAMPLE_VOX_next = 2047;
 					end
-					else if(ADPCM_SAMPLE_L_next < -2048) begin
-						ADPCM_SAMPLE_L_next = -2048;
+					else if(ADPCM_SAMPLE_VOX_next < -2048) begin
+						ADPCM_SAMPLE_VOX_next = -2048;
 					end
-					if(step_index_L_next >= 49) begin
-						step_index_L_next = 48;
+					if(step_index_VOX_next >= 60) begin
+						step_index_VOX_next = 59;
 					end
-					else if (step_index_L_next < 0) begin
-						step_index_L_next = 0;
+					else if (step_index_VOX_next < 0) begin
+						step_index_VOX_next = 0;
 					end
-					// step_L_next = step_L + ((11 * vox_ADPCM_step_table[step_index_L_next])/10);
-					step_L_next = step_L + vox_ADPCM_step_table[step_index_L_next];
+					// step_VOX_next = vox_ADPCM_step_table[step_index_VOX_next];	// Works but badly
+					step_VOX_next = ima_step_table[step_index_VOX_next];
+					// step_VOX_next = step_VOX * vox_ADPCM_step_table[step_index_VOX_next];
+					// step_VOX_next = ((9 * (step_VOX * vox_ADPCM_step_table[step_index_VOX_next])) >> 3); // Best approximation of
 				end
 			end
 			default: ;
@@ -915,19 +917,19 @@ module I2S_interface_R2 (
 
 	always_ff @ (posedge clk50 or posedge reset) begin
 		if (reset) begin
-			ADPCM_SAMPLE_L <= 0;
-			// ADPCM_PREVSAMPLE_L <= 0;
-			ADPCM_CALC_L_STATE <= 0;
-			step_index_L <= 16;
-			step_L <= 16;
+			ADPCM_SAMPLE_VOX <= 0;
+			// ADPCM_PREVSAMPLE_VOX <= 0;
+			ADPCM_CALC_VOX_STATE <= 0;
+			step_index_VOX <= 16;
+			step_VOX <= 16;
 		end
 		else begin
-			// ADPCM_SAMPLE_L <= ADPCM_SAMPLE_L_next[15:0];
-			ADPCM_SAMPLE_L <= ADPCM_SAMPLE_L_next;
-			// ADPCM_PREVSAMPLE_L <= ADPCM_PREVSAMPLE_L_next;
-			ADPCM_CALC_L_STATE <= ADPCM_CALC_L_STATE_next;
-			step_index_L <= step_index_L_next;
-			step_L <= step_L_next;
+			// ADPCM_SAMPLE_VOX <= ADPCM_SAMPLE_VOX_next[15:0];
+			ADPCM_SAMPLE_VOX <= ADPCM_SAMPLE_VOX_next;
+			// ADPCM_PREVSAMPLE_VOX <= ADPCM_PREVSAMPLE_VOX_next;
+			ADPCM_CALC_VOX_STATE <= ADPCM_CALC_VOX_STATE_next;
+			step_index_VOX <= step_index_VOX_next;
+			step_VOX <= step_VOX_next;
 		end
 	end
 
@@ -1014,17 +1016,17 @@ module I2S_interface_R2 (
 			-1, -1, -1, -1, 2, 4, 6, 8,
 			-1, -1, -1, -1, 2, 4, 6, 8
 			};
-	// shortint ima_step_table[89] = '{ 
-	// 	7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 
-	// 	19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
-	// 	50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 
-	// 	130, 143, 157, 173, 190, 209, 230, 253, 279, 307,
-	// 	337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
-	// 	876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 
-	// 	2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
-	// 	5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 
-	// 	15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767 
-	// 	}; 
+	shortint ima_step_table[89] = '{ 
+		7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 
+		19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
+		50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 
+		130, 143, 157, 173, 190, 209, 230, 253, 279, 307,
+		337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+		876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 
+		2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
+		5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 
+		15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767 
+		}; 
 	shortint vox_ADPCM_step_table[49] = '{ 
 		16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
 		50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
