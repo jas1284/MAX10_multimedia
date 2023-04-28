@@ -30,7 +30,12 @@ module I2S_interface_R2 (
 	output logic [3:0] hex_out_3,
 	output logic [3:0] hex_out_2,
 	output logic [3:0] hex_out_1,
-	output logic [3:0] hex_out_0
+	output logic [3:0] hex_out_0,
+	output logic [3:0] red,
+    output logic [3:0] green,
+    output logic [3:0] blue,
+    output logic hsync,
+    output logic vsync
 	);
 	
 	// logic LRCLK_state; //used to determine when LRCLK changes edge for reading
@@ -945,14 +950,14 @@ module I2S_interface_R2 (
 					else if(ADPCM_SAMPLE_VOX_next < -2048) begin
 						ADPCM_SAMPLE_VOX_next = -2048;
 					end
-					if(step_index_VOX_next >= 60) begin
-						step_index_VOX_next = 59;
+					if(step_index_VOX_next >= 49) begin
+						step_index_VOX_next = 48;
 					end
 					else if (step_index_VOX_next < 0) begin
 						step_index_VOX_next = 0;
 					end
 					// step_VOX_next = vox_ADPCM_step_table[step_index_VOX_next];	// Works but badly
-					step_VOX_next = ima_step_table[step_index_VOX_next];
+					step_VOX_next = ima_step_table[step_index_VOX_next + 8];
 					// step_VOX_next = step_VOX * vox_ADPCM_step_table[step_index_VOX_next];
 					// step_VOX_next = ((9 * (step_VOX * vox_ADPCM_step_table[step_index_VOX_next])) >> 3); // Best approximation of
 				end
@@ -1088,6 +1093,99 @@ module I2S_interface_R2 (
 		end
 	end
 
+	logic vga_clk, vga_blank, vga_sync;
+    logic [9:0] vga_x, vga_y;
+	logic [3:0] calc_red, calc_green, calc_blue;
+
+	vga_controller vgac(.Clk(clk50),
+                        .Reset(reset),
+                        .hs(hsync),
+                        .vs(vsync),
+                        .pixel_clk(vga_clk),
+                        .blank(vga_blank),
+                        .sync(vga_sync),
+                        .DrawX(vga_x),
+                        .DrawY(vga_y)
+    );
+
+	logic [7:0] curpix_idx;
+	logic [7:0] curpix_sample;
+	assign curpix_idx = ((vga_x >> 3) + cur_sample_counter + 1) % 80;
+	assign curpix_sample = saved_samples[curpix_idx];
+	always_comb begin
+		calc_red = 4'h0;
+		calc_green = 4'h0;
+		calc_blue = 4'h0;
+		case (curpix_sample[7]) // check sign of sample
+			1'b1 : begin
+				if((vga_y >= (10'd112 + curpix_sample[6:0])) && (vga_y <= 10'd240) && (curpix_sample[6:0] != 7'h0)) begin
+					calc_green = 4'hF;
+				end
+			end
+			1'b0 : begin
+				if((vga_y <= (10'd240 + curpix_sample)) & (vga_y >= 10'd240)) begin
+					calc_green = 4'hF;
+				end
+			end
+			default: ;
+		endcase
+	end
+
+	always_ff @( posedge vga_clk or posedge reset ) begin 
+        if(reset) begin
+            red <= 4'h0;
+            green <= 4'h0;
+            blue <= 4'h0;
+        end
+        else if (vga_blank) begin
+            red <= calc_red;
+            green <= calc_green;
+            blue <= calc_blue;
+        end
+        else begin
+            red <= 4'h0;
+            green <= 4'h0;
+            blue <= 4'h0;
+        end
+    end
+
+	logic [7:0] pcm_sample;
+	always_ff @ (posedge clk50 or posedge reset) begin
+		if(reset) begin
+			pcm_sample <= 8'h0;
+		end
+		else if(I2S_go_next) begin
+			pcm_sample <= BITQUEUE[47:40];
+		end
+	end
+
+	logic [7:0] sample_to_save;
+	always_comb begin
+		case (playback_type)
+			4'h1 : sample_to_save = pcm_sample;
+			4'h2 : sample_to_save = g711_sample[13:6];
+			4'hA : sample_to_save = g711_sample[13:6];
+			4'hD : sample_to_save = ADPCM_VOX_READOUT[7:4];
+			4'hB : sample_to_save = ADPCM_IMA_READOUT[15:8];
+			default: sample_to_save = 8'h0;
+		endcase
+	end
+
+	logic [7:0] cur_sample_counter;
+	logic [7:0] saved_samples[80];	// Used as a circular buffer to keep track of 80 most recent samples. 
+	always_ff @( posedge vsync or posedge reset) begin
+		if (reset) 
+			cur_sample_counter <= 8'h0;
+		else begin
+			saved_samples[cur_sample_counter] <= sample_to_save;
+			if(cur_sample_counter < 79) begin
+				cur_sample_counter = cur_sample_counter + 1;
+			end
+			else // if counter >= 79
+				cur_sample_counter <= 8'h0;
+		end
+	end
+
 	shortint ima_index_table[16] = '{
 			-1, -1, -1, -1, 2, 4, 6, 8,
 			-1, -1, -1, -1, 2, 4, 6, 8
@@ -1103,11 +1201,11 @@ module I2S_interface_R2 (
 		5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 
 		15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767 
 		}; 
-	shortint vox_ADPCM_step_table[49] = '{ 
-		16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
-		50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
-		157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 
-		494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552 
-		};
+	// shortint vox_ADPCM_step_table[49] = '{ 
+	// 	16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 
+	// 	50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
+	// 	157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 
+	// 	494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552 
+	// 	};
 	
 endmodule

@@ -262,6 +262,33 @@ module player_toplevel (
 			WRITE_OVERRIDE_STATE <= ~RAM_INIT_DONE_SIG;
 		end
 	end
+
+	logic [3:0] VGA_R_VID, VGA_G_VID, VGA_B_VID;
+	logic [3:0] VGA_R_AUD, VGA_G_AUD, VGA_B_AUD;
+	logic VGA_HS_VID, VGA_VS_VID;
+	logic VGA_HS_AUD, VGA_VS_AUD;
+
+	always_comb begin 
+		case (SW9_SYNC)
+			1'b1 : begin	// Video playback
+				VGA_R = VGA_R_VID;
+				VGA_G = VGA_G_VID;
+				VGA_B = VGA_B_VID;
+				VGA_HS = VGA_HS_VID;
+				VGA_VS = VGA_VS_VID;
+			end
+			1'b0 : begin	// Audio playback - show graphics
+				VGA_R = VGA_R_AUD;
+				VGA_G = VGA_G_AUD;
+				VGA_B = VGA_B_AUD;
+				VGA_HS = VGA_HS_AUD;
+				VGA_VS = VGA_VS_AUD;
+			end
+			default: ;
+		endcase
+	end
+
+
 	 
 	sdcard_init sdtest(
 			.clk50(MAX10_CLK1_50),
@@ -320,19 +347,19 @@ module player_toplevel (
     		.run(SW9_SYNC),  // enable-run, or halts
     		.reset(Reset_h),
 			.key(SW0_SYNC),	// SW0_SYNC
-    // SDRAM connections
+    		// SDRAM connections
     		.ram_rden(VIDASIC_RDEN),
     		.ram_addr(VIDASIC_ADDR),
     		.ram_data(VIDASIC_RDDATA),
     		.ram_ack(VIDASIC_ACK),
     		.status_1(LEDR[7]),
     		.status_2(LEDR[6]),   
-    // VGA connections
-    		.red(VGA_R),
-    		.green(VGA_G),
-    		.blue(VGA_B),
-    		.hsync(VGA_HS),
-    		.vsync(VGA_VS),
+    		// VGA connections
+    		.red(VGA_R_VID),
+    		.green(VGA_G_VID),
+    		.blue(VGA_B_VID),
+    		.hsync(VGA_HS_VID),
+    		.vsync(VGA_VS_VID),
 			// temp hex connections
 			.hex_out_5(HEX_NUM_5_VID),
 			.hex_out_4(HEX_NUM_4_VID),
@@ -359,7 +386,13 @@ module player_toplevel (
 			.hex_out_3(HEX_NUM_3_AUD),
 			.hex_out_2(HEX_NUM_2_AUD),
 			.hex_out_1(HEX_NUM_1_AUD),
-			.hex_out_0(HEX_NUM_0_AUD)
+			.hex_out_0(HEX_NUM_0_AUD),
+			// VGA connections
+    		.red(VGA_R_AUD),
+    		.green(VGA_G_AUD),
+    		.blue(VGA_B_AUD),
+    		.hsync(VGA_HS_AUD),
+    		.vsync(VGA_VS_AUD)
 	 );
 
 

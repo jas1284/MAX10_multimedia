@@ -1388,9 +1388,9 @@ end
 
     always_ff @( posedge vga_clk or posedge reset ) begin 
         if(reset) begin
-            red <= 0;
-            green <= 0;
-            blue <= 0;
+            red <= 4'h0;
+            green <= 4'h0;
+            blue <= 4'h0;
         end
         else if (vga_blank) begin
             red <= calc_red[7:4];
@@ -1398,9 +1398,9 @@ end
             blue <= calc_blue[7:4];
         end
         else begin
-            red <= 0;
-            green <= 0;
-            blue <= 0;
+            red <= 4'h0;
+            green <= 4'h0;
+            blue <= 4'h0;
         end
     end
 
@@ -1445,9 +1445,9 @@ end
 
     always_comb begin
         if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
-            calc_red = 0;
-            calc_green = 0;
-            calc_blue = 0;
+            calc_red = 8'h0;
+            calc_green = 8'h0;
+            calc_blue = 8'h0;
         end
         else begin  // rounding a lot here... rec.601 to RGB conversion, stolen from wikipedia wiki/YCbCr
             calc_red = ((298 * VGA_Y_RDDATA)>>8) + ((408*VGA_Cr_RDDATA)>>8) + 223;
