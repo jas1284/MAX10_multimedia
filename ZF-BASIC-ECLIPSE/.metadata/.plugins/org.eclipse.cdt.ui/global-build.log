@@ -1434,3 +1434,82 @@ Info: Building ../SGTL5000_I2C_bsp/
 C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
 [BSP build complete]
 [SGTL5000_I2C build complete]
+12:31:34 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+12:31:36 **** Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+[BSP build complete]
+12:32:04 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+13:01:26 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+13:01:26 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+[BSP build complete]
+13:01:53 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+14:04:08 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+Info: Compiling sgtl5000_test.c to obj/default/sgtl5000_test.o
+nios2-elf-gcc -xc -MP -MMD -c -I../SGTL5000_I2C_bsp//HAL/inc -I../SGTL5000_I2C_bsp/ -I../SGTL5000_I2C_bsp//drivers/inc  -pipe -D__hal__ -DALT_NO_C_PLUS_PLUS -DALT_NO_CLEAN_EXIT -D'exit(a)=_exit(a)' -DALT_NO_EXIT -DALT_USE_DIRECT_DRIVERS -DALT_NO_INSTRUCTION_EMULATION -DALT_USE_SMALL_DRIVERS -DSMALL_C_LIB -DALT_SINGLE_THREADED    -Os -g -Wall   -mno-hw-div -mno-hw-mul -mno-hw-mulx -mgpopt=global  -o obj/default/sgtl5000_test.o sgtl5000_test.c
+sgtl5000_test.c: In function 'main':
+sgtl5000_test.c:173:6: warning: multi-line comment [-Wcomment]
+      //SGTL5000_Reg_Wr(i2c_dev, SGTL5000_CHIP_ANA_CTRL, \
+      ^
+sgtl5000_test.c:175:6: warning: multi-line comment [-Wcomment]
+      //SGTL5000_Reg_Wr(i2c_dev, SGTL5000_CHIP_ANA_CTRL, \
+      ^
+sgtl5000_test.c:178:2: warning: multi-line comment [-Wcomment]
+  //SGTL5000_Reg_Wr(i2c_dev, SGTL5000_CHIP_ANA_CTRL, \
+  ^
+Info: Linking SGTL5000_I2C.elf
+nios2-elf-g++  -T'../SGTL5000_I2C_bsp//linker.x' -msys-crt0='../SGTL5000_I2C_bsp//obj/HAL/src/crt0.o' -msys-lib=hal_bsp -L../SGTL5000_I2C_bsp/  -msmallc  -Wl,-Map=SGTL5000_I2C.map   -Os -g -Wall   -mno-hw-div -mno-hw-mul -mno-hw-mulx -mgpopt=global  -o SGTL5000_I2C.elf obj/default/sgtl5000/sgtl5000.o obj/default/sgtl5000_test.o -lm -msys-lib=m
+nios2-elf-insert SGTL5000_I2C.elf --thread_model hal --cpu_name nios2_gen2_0 --qsys true --simulation_enabled false --id 0 --sidp 0xd8 --timestamp 1682465609 --stderr_dev jtag_uart_0 --stdin_dev jtag_uart_0 --stdout_dev jtag_uart_0 --sopc_system_name ZFsoc --quartus_project_dir "C:/Users/Jas1284/Documents/ECE385/FINALPROJ/FPSP23-ZF-BASIC" --jdi ../..//output_files/FP-ZUOFU-BASIC.jdi --sopcinfo C:/Users/Jas1284/Documents/ECE385/FINALPROJ/FPSP23-ZF-BASIC/software/SGTL5000_I2C_bsp/../../ZFsoc.sopcinfo
+Info: (SGTL5000_I2C.elf) 10 KBytes program size (code + initialized data).
+Info:                    1300 Bytes free for stack + heap.
+Info: Creating SGTL5000_I2C.objdump
+nios2-elf-objdump --disassemble --syms --all-header --source SGTL5000_I2C.elf >SGTL5000_I2C.objdump
+[SGTL5000_I2C build complete]
+14:04:11 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+[BSP build complete]
+14:04:19 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+14:05:57 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+14:05:58 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+[BSP build complete]
+14:06:01 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]

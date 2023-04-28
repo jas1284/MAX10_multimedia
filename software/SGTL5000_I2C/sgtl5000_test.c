@@ -193,5 +193,31 @@ int main()
 	printf( "CHIP_PAD_STRENGTH register: %x\n", SGTL5000_Reg_Rd (i2c_dev, SGTL5000_CHIP_PAD_STRENGTH));
 
 
+	//modification of HP out volume:
+	//volume from 0 to 7F, or 0 to 127 inclusive (higher is lower volume,
+	//0x18 or d24 is same vol)
+	//volatile unsigned int *BUTTON_PIO = (unsigned int*)0x5f;
+
+	int vol = 90;
+	int button_state = 0;
+	int button = 0;
+	while(1)
+	{
+		button = IORD_ALTERA_AVALON_PIO_DATA(BUTTON_BASE);
+		if(button_state == 0 && button == 1){
+			button_state = 1;
+			vol = vol + 2;
+			if(vol >= 128){
+				vol = 90;
+			}
+			printf("%d\n", vol);
+		}
+		if(button == 0){
+			button_state = 0;
+		}
+		SGTL5000_Reg_Wr(i2c_dev, SGTL5000_CHIP_ANA_HP_CTRL, \
+				vol << SGTL5000_HP_VOL_RIGHT_SHIFT |
+				vol << SGTL5000_HP_VOL_LEFT_SHIFT);
+	}
 	return 0;
 }

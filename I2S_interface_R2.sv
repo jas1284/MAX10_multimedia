@@ -48,7 +48,7 @@ module I2S_interface_R2 (
 	assign hex_out_5 = READ_ADDR[23:20];
 
 	parameter BIT_DEPTH = 16;	// Assume this much, lol. We don't have a good way to deal with it otherwise!
-	parameter VOLUME_SHIFT = 6; // how many bits to shift to preserve hearing?
+	parameter VOLUME_SHIFT = 1; // how many bits to shift to preserve hearing?
 
 	enum logic [12:0] 
     {q_shift, 
@@ -263,18 +263,24 @@ module I2S_interface_R2 (
 	right_dummy,
 	right_data,
 	right_pad,
-	IMA_ADPCM_start_wait,
-	IMA_ADPCM_start_wait_zerocount,
-	IMA_ADPCM_left,
-	IMA_ADPCM_left_zerocount,
-	IMA_ADPCM_right,
-	IMA_ADPCM_right_zerocount,
+	VOX_ADPCM_start_wait,
+	VOX_ADPCM_start_wait_zerocount,
+	VOX_ADPCM_left,
+	VOX_ADPCM_left_zerocount,
+	VOX_ADPCM_right,
+	VOX_ADPCM_right_zerocount,
 	g711_start_wait,
 	g711_start_wait_zerocount,
 	g711_left,
 	g711_left_zerocount,
 	g711_right,
-	g711_right_zerocount
+	g711_right_zerocount,
+	IMA_ADPCM_start_wait,
+	IMA_ADPCM_start_wait_zerocount,
+	IMA_ADPCM_left,
+	IMA_ADPCM_left_zerocount,
+	IMA_ADPCM_right,
+	IMA_ADPCM_right_zerocount
     } I2S_STATE, I2S_nextstate;
 
 	logic shiftsig, shiftsig_next;
@@ -283,9 +289,10 @@ module I2S_interface_R2 (
 	logic I2S_go, I2S_go_next;
 	logic [8:0] I2S_counter, I2S_count_next;
 	logic [5:0] index_counter, index_counter_next;
-	logic ADPCM_CALC_VOX, ADPCM_CALC_L, ADPCM_CALC_R;
+	logic ADPCM_CALC_VOX, ADPCM_CALC_IMA;
 	logic [3:0] playback_type, playback_type_next;
 	logic g711_law_type, g711_law_type_next;	// 1 indicates u-law
+	logic IMA_ADPCM_LOADSTART;
 
 	assign hex_out_0 = playback_type;
 
@@ -299,11 +306,12 @@ module I2S_interface_R2 (
 		shiftsig_next = 1'b0;
 		I2S_go_next = 1'b0;
 		ADPCM_CALC_VOX = 1'b0;
-		ADPCM_CALC_R = 1'b0;
+		ADPCM_CALC_IMA = 1'b0;
 		g711_calc = 1'b0;
 		playback_type_next = playback_type;
 		g711_law_type_next = g711_law_type;
 		index_counter_next = index_counter;
+		IMA_ADPCM_LOADSTART = 1'b0;
 		if(Q_RDY & I2S_enable) begin
 			case (I2S_STATE)
 				start_check_RIFF : begin
@@ -315,7 +323,7 @@ module I2S_interface_R2 (
 						end
 						default : begin
 							playback_type_next = 4'hd;	// "d" for vox aDpcm!
-							I2S_nextstate = IMA_ADPCM_start_wait_zerocount;	// If anything else, assume is VOX ADPCM
+							I2S_nextstate = VOX_ADPCM_start_wait_zerocount;	// If anything else, assume is VOX ADPCM
 						end
 					endcase		
 				end
@@ -344,10 +352,10 @@ module I2S_interface_R2 (
 							playback_type_next = 4'h2;	// "2" rhymes "mu"
 							g711_law_type_next = 1'b1; 	// Remember that we're u-law!
 						end
-						// 16'h0011 : begin 
-						// 	I2S_nextstate = IMA_ADPCM_start_wait;
-						// 	playback_type_next = 4'hA;	// "A" for ADPCM!
-						// end
+						16'h0011 : begin 
+							I2S_nextstate = IMA_ADPCM_start_wait;
+							playback_type_next = 4'hB;	// "B" for "11"... doesnt really work lol but shh
+						end
 						default :;
 						// default: I2S_nextstate = pcm_start_wait_zerocount;
 					endcase			
@@ -457,22 +465,6 @@ module I2S_interface_R2 (
 					end
 				end
 				g711_left : begin
-					// I2S_DIN = g711_sample[13];
-					// if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (14 + VOLUME_SHIFT - 1))) begin
-					// 	I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - I2S_counter];
-					// 	// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
-					// 	// Only shift if we are above the volume.
-					// 	// Should also nicely sign-extend when reducing amplitude.
-					// end
-					// if(index_counter < 9) begin	// Allow for 8 shifts - to dump the compressed sample.
-					// 	shiftsig_next = I2S_SCLK;
-					// end
-					// index_counter_next = index_counter + 1;
-					// I2S_count_next = I2S_counter + 1;
-					// if(index_counter >= (14 + VOLUME_SHIFT - 1)) begin
-					// 	I2S_nextstate = g711_left_zerocount;
-					// end
-					// if (index_counter != 0) begin
 					if(index_counter >= VOLUME_SHIFT) begin
 						I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - index_counter];
 					end
@@ -499,21 +491,6 @@ module I2S_interface_R2 (
 					end
 				end
 				g711_right : begin
-					// I2S_DIN = g711_sample[13];
-					// if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (14 + VOLUME_SHIFT - 1))) begin
-					// 	I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - I2S_counter];
-					// 	// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
-					// 	// Only shift if we are above the volume.
-					// 	// Should also nicely sign-extend when reducing amplitude.
-					// end
-					// if(index_counter < 9) begin	// 8 bits of shift
-					// 	shiftsig_next = I2S_SCLK;
-					// end
-					// index_counter_next = index_counter + 1;
-					// I2S_count_next = I2S_counter + 1;
-					// if(index_counter >= (14 + VOLUME_SHIFT - 1)) begin
-					// 	I2S_nextstate = g711_right_zerocount;
-					// end
 					if(index_counter >= VOLUME_SHIFT) begin
 						I2S_DIN = g711_sample[(13 + VOLUME_SHIFT) - index_counter];
 					end
@@ -539,10 +516,87 @@ module I2S_interface_R2 (
 						g711_calc = 1'b1;
 					end
 				end
-				IMA_ADPCM_start_wait : begin
+				VOX_ADPCM_start_wait : begin
 					shiftsig_next = I2S_SCLK;
 					I2S_count_next = I2S_counter + 1;
 					if(I2S_counter >= 9'd192) begin	// 192 bit-shifts to get into starting position.
+						I2S_count_next = 0;
+						I2S_nextstate = VOX_ADPCM_start_wait_zerocount;
+					end
+				end
+				VOX_ADPCM_start_wait_zerocount : begin
+					I2S_count_next = 0;
+					if(~I2S_LRCLK & LRCLK_saved) begin	// If just changed to right from left
+						I2S_go_next = 1'b1;
+					end				
+					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
+						I2S_count_next = 0;
+						index_counter_next = 0;
+						ADPCM_CALC_VOX = 1'b1;
+						I2S_nextstate = VOX_ADPCM_left;
+					end
+				end
+				VOX_ADPCM_left : begin
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+					end
+					else
+						I2S_DIN = ADPCM_VOX_READOUT[11];
+					index_counter_next = index_counter + 1;
+					if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
+						shiftsig_next = I2S_SCLK;
+					end
+					if(index_counter >= 11 + VOLUME_SHIFT) begin
+						I2S_nextstate = VOX_ADPCM_left_zerocount;
+					end
+				end
+				VOX_ADPCM_left_zerocount : begin
+					I2S_DIN = ADPCM_SAMPLE_VOX[11];
+					I2S_count_next = 0;
+					index_counter_next = 0;
+					if(I2S_LRCLK & (~LRCLK_saved)) begin
+						I2S_go_next = 1'b1;
+					end
+					if(I2S_go) begin
+						I2S_nextstate = VOX_ADPCM_right;
+						// ADPCM_CALC_R = 1'b1;
+					end
+				end
+				VOX_ADPCM_right : begin
+					if(index_counter >= VOLUME_SHIFT) begin
+						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+					end
+					else
+						I2S_DIN = ADPCM_VOX_READOUT[11];
+					index_counter_next = index_counter + 1;
+					// Do not shift again, since it's MONO!
+					// if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
+					// 	shiftsig_next = I2S_SCLK;
+					// end	
+					if(index_counter >= 11 + VOLUME_SHIFT) begin
+						I2S_nextstate = VOX_ADPCM_right_zerocount;
+					end
+				end
+				VOX_ADPCM_right_zerocount : begin
+					I2S_DIN = ADPCM_SAMPLE_VOX[11];
+					I2S_count_next = 0;
+					index_counter_next = 0;
+					if((~I2S_LRCLK) & LRCLK_saved) begin
+						I2S_go_next = 1'b1;
+					end
+					if(I2S_go) begin
+						I2S_nextstate = VOX_ADPCM_left;
+						ADPCM_CALC_VOX = 1'b1;
+					end
+				end
+				IMA_ADPCM_start_wait : begin
+					IMA_ADPCM_LOADSTART = 1'b1; // Override IMA_ADPCM decode parameters
+					shiftsig_next = I2S_SCLK;
+					I2S_count_next = I2S_counter + 1;
+					index_counter_next = index_counter + 1;
+					// if(index_counter == )	// theoretically needed to fill in starting data
+					// However, we're going to hardcode this or assume it. 
+					if(I2S_counter >= 9'd352) begin	// 352 bit-shifts to get into starting position.
 						I2S_count_next = 0;
 						I2S_nextstate = IMA_ADPCM_start_wait_zerocount;
 					end
@@ -555,40 +609,28 @@ module I2S_interface_R2 (
 					if(I2S_go) begin	// this is necessary due to the above condition failing to persist...
 						I2S_count_next = 0;
 						index_counter_next = 0;
-						ADPCM_CALC_VOX = 1'b1;
+						ADPCM_CALC_IMA = 1'b1;
 						I2S_nextstate = IMA_ADPCM_left;
 					end
 				end
 				IMA_ADPCM_left : begin
 					if(index_counter >= VOLUME_SHIFT) begin
-						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+						I2S_DIN = ADPCM_IMA_READOUT[(15 + VOLUME_SHIFT) - index_counter];
 					end
 					else
-						I2S_DIN = ADPCM_VOX_READOUT[11];
+						I2S_DIN = ADPCM_IMA_READOUT[15];
 					index_counter_next = index_counter + 1;
-					if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
-						shiftsig_next = I2S_SCLK;
-					end
-					if(index_counter >= 11 + VOLUME_SHIFT) begin
+					if(IMA_nibble_high == 0) begin	// If the next nibble is to be low... then we're done with current data
+						if(index_counter < 8) begin		// Allow for 8 shifts - to dump double-nibbles.
+							shiftsig_next = I2S_SCLK;
+						end
+					end	// Theoretically, first run will have nibble_high = 1 since we just got done calculating a nibble. I think.
+					if(index_counter >= 15 + VOLUME_SHIFT) begin
 						I2S_nextstate = IMA_ADPCM_left_zerocount;
 					end
-					// I2S_DIN = ADPCM_VOX_READOUT[11];
-					// if((I2S_counter >= VOLUME_SHIFT) & (I2S_counter < (12 + VOLUME_SHIFT - 1))) begin
-					// 	I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - I2S_counter];
-						// shiftsig_next = I2S_SCLK; 	// This should end up shifting right on time.
-						// Only shift if we are above the volume.
-						// Should also nicely sign-extend when reducing amplitude.
-					// end
-					// if(I2S_counter < 5) begin
-					// 	shiftsig_next = I2S_SCLK;
-					// end
-					// I2S_count_next = I2S_counter + 1;
-					// if(I2S_counter >= (12 + VOLUME_SHIFT - 1)) begin
-					// 	I2S_nextstate = IMA_ADPCM_left_zerocount;
-					// end
 				end
 				IMA_ADPCM_left_zerocount : begin
-					I2S_DIN = ADPCM_SAMPLE_VOX[11];
+					I2S_DIN = ADPCM_SAMPLE_VOX[15];
 					I2S_count_next = 0;
 					index_counter_next = 0;
 					if(I2S_LRCLK & (~LRCLK_saved)) begin
@@ -601,21 +643,21 @@ module I2S_interface_R2 (
 				end
 				IMA_ADPCM_right : begin
 					if(index_counter >= VOLUME_SHIFT) begin
-						I2S_DIN = ADPCM_VOX_READOUT[(11 + VOLUME_SHIFT) - index_counter];
+						I2S_DIN = ADPCM_IMA_READOUT[(15 + VOLUME_SHIFT) - index_counter];
 					end
 					else
-						I2S_DIN = ADPCM_VOX_READOUT[11];
+						I2S_DIN = ADPCM_IMA_READOUT[15];
 					index_counter_next = index_counter + 1;
 					// Do not shift again, since it's MONO!
 					// if(index_counter < 4) begin	// Allow for 8 shifts - to dump the compressed sample.
 					// 	shiftsig_next = I2S_SCLK;
 					// end	
-					if(index_counter >= 11 + VOLUME_SHIFT) begin
+					if(index_counter >= 15 + VOLUME_SHIFT) begin
 						I2S_nextstate = IMA_ADPCM_right_zerocount;
 					end
 				end
 				IMA_ADPCM_right_zerocount : begin
-					I2S_DIN = ADPCM_SAMPLE_VOX[11];
+					I2S_DIN = ADPCM_SAMPLE_VOX[15];
 					I2S_count_next = 0;
 					index_counter_next = 0;
 					if((~I2S_LRCLK) & LRCLK_saved) begin
@@ -623,7 +665,7 @@ module I2S_interface_R2 (
 					end
 					if(I2S_go) begin
 						I2S_nextstate = IMA_ADPCM_left;
-						ADPCM_CALC_VOX = 1'b1;
+						ADPCM_CALC_IMA = 1'b1;
 					end
 				end
 				default: ;
@@ -871,8 +913,6 @@ module I2S_interface_R2 (
 		step_VOX_next = step_VOX;
 		// ADPCM_PREVSAMPLE_VOX_next = ADPCM_PREVSAMPLE_VOX;
 		ADPCM_SAMPLE_VOX_next = ADPCM_SAMPLE_VOX;
-		// ADPCM_SAMPLE_VOX_next[15:0] = ADPCM_SAMPLE_VOX;
-		// ADPCM_SAMPLE_VOX_next[31:16] = 16'h0;
 		step_index_VOX_next = step_index_VOX;
 		// predictor_next = predictor_saved;
 		case (ADPCM_CALC_VOX_STATE) 
@@ -927,7 +967,7 @@ module I2S_interface_R2 (
 			// ADPCM_PREVSAMPLE_VOX <= 0;
 			ADPCM_CALC_VOX_STATE <= 0;
 			step_index_VOX <= 16;
-			step_VOX <= 16;
+			step_VOX <= 7;
 		end
 		else begin
 			// ADPCM_SAMPLE_VOX <= ADPCM_SAMPLE_VOX_next[15:0];
@@ -939,84 +979,114 @@ module I2S_interface_R2 (
 		end
 	end
 
-	// // ADPCM calculating stuff for R
-	// shortint ADPCM_SAMPLE_R, ADPCM_PREVSAMPLE_R, ADPCM_PREVSAMPLE_R_next;
-	// int ADPCM_SAMPLE_R_next;
-	// logic ADPCM_CALC_R_STATE, ADPCM_CALC_R_STATE_next;	// This is the state
-	// shortint step_index_R, step_index_R_next;
-	// int diff_R;
+	// ADPCM calculating stuff for IMA WAV standard - mono, 4bits->16bits.
+	int ADPCM_SAMPLE_IMA; // , ADPCM_PREVSAMPLE_IMA, ADPCM_PREVSAMPLE_IMA_next;
+	int ADPCM_SAMPLE_IMA_next;
+	logic [15:0] ADPCM_IMA_READOUT;
+	assign ADPCM_IMA_READOUT = ADPCM_SAMPLE_IMA[15:0];
+	logic ADPCM_CALC_IMA_STATE, ADPCM_CALC_IMA_STATE_next;	// This is the state
+	shortint step_index_IMA, step_index_IMA_next;
+	int diff_IMA;
+	logic [3:0] IMA_nibble;
+	logic IMA_nibble_high, IMA_nibble_high_next;
 
-	// shortint step_R;
-	// assign step_R = ima_step_table[step_index_R];
+	always_comb begin
+		case (IMA_nibble_high)
+			1'b1 : begin
+				IMA_nibble = nibble;
+			end
+			1'b0 : begin
+				IMA_nibble = BITQUEUE[43:40];
+			end
+			default: ;
+		endcase
+	end
 
-	// always_comb begin
-	// 	diff_R = step_R >> 3;
-	// 	if(nibble[2])
-	// 		diff_R = diff_R + step_R;
-	// 	if(nibble[1])
-	// 		diff_R = diff_R + (step_R >> 1);
-	// 	if(nibble[0])
-	// 		diff_R = diff_R + (step_R >> 2);
-	// end
+	shortint step_IMA, step_IMA_next;
 
-	// always_comb begin
-	// 	ADPCM_CALC_R_STATE_next = ADPCM_CALC_R_STATE;
-	// 	ADPCM_PREVSAMPLE_R_next = ADPCM_PREVSAMPLE_R;
-	// 	ADPCM_SAMPLE_R_next[15:0] = ADPCM_SAMPLE_R;
-	// 	ADPCM_SAMPLE_R_next[31:16] = 16'h0;
-	// 	step_index_R_next = step_index_R;
-	// 	// predictor_next = predictor_saved;
-	// 	case (ADPCM_CALC_R_STATE) 
-	// 		1'b1 : begin	// Wait for signal to deassert.
-	// 			if(~ADPCM_CALC_R)begin
-	// 				ADPCM_CALC_R_STATE_next = 1'b0;	// Arm to wait for next assert
-	// 			end
-	// 		end
-	// 		1'b0 : 	begin	// Await activation
-	// 			if(ADPCM_CALC_R)	begin	// if called upon
-	// 				ADPCM_CALC_R_STATE_next = 1'b1;
-	// 				ADPCM_PREVSAMPLE_R_next = ADPCM_SAMPLE_R;
-	// 				case (sign)
-	// 					1'b1 : ADPCM_SAMPLE_R_next = ADPCM_SAMPLE_R_next - diff_R;
-	// 					1'b0 : ADPCM_SAMPLE_R_next = ADPCM_SAMPLE_R_next + diff_R;
-	// 					default: ;
-	// 				endcase
-	// 				// ADPCM_SAMPLE_R_next = ADPCM_PREVSAMPLE_R + diff_R;
-	// 				if(ADPCM_SAMPLE_R_next > 32767) begin
-	// 					ADPCM_SAMPLE_R_next = 32767;
-	// 				end
-	// 				else if(ADPCM_SAMPLE_R_next < -32768) begin
-	// 					ADPCM_SAMPLE_R_next = -32768;
-	// 				end
+	always_comb begin
+		diff_IMA = 0;
+		ADPCM_CALC_IMA_STATE_next = ADPCM_CALC_IMA_STATE;
+		step_IMA_next = step_IMA;
+		// ADPCM_PREVSAMPLE_IMA_next = ADPCM_PREVSAMPLE_IMA;
+		ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA;
+		step_index_IMA_next = step_index_IMA;
+		IMA_nibble_high_next = IMA_nibble_high;
+		// predictor_next = predictor_saved;
+		case (ADPCM_CALC_IMA_STATE) 
+			1'b1 : begin	// Wait for signal to deassert.
+				if(~ADPCM_CALC_IMA)begin
+					IMA_nibble_high_next = ~IMA_nibble_high;
+					ADPCM_CALC_IMA_STATE_next = 1'b0;	// Arm to wait for next assert
+				end
+			end
+			1'b0 : 	begin	// Await activation
+				if(ADPCM_CALC_IMA)	begin	// if called upon
+					ADPCM_CALC_IMA_STATE_next = 1'b1;
+					step_index_IMA_next = step_index_IMA + ima_index_table[IMA_nibble];
+					// ADPCM_PREVSAMPLE_IMA_next = ADPCM_SAMPLE_IMA;
+					diff_IMA = step_IMA >> 3;
+					if(IMA_nibble[2])
+						diff_IMA = diff_IMA + step_IMA;
+					if(IMA_nibble[1])
+						diff_IMA = diff_IMA + (step_IMA >> 1);
+					if(IMA_nibble[0])
+						diff_IMA = diff_IMA + (step_IMA >> 2);
+					case (sign)
+						1'b1 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA - diff_IMA;
+						1'b0 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA + diff_IMA;
+						default: ;
+					endcase
+					// ADPCM_SAMPLE_IMA_next = ADPCM_PREVSAMPLE_IMA + diff_IMA;
+					if(ADPCM_SAMPLE_IMA_next > 32767) begin
+						ADPCM_SAMPLE_IMA_next = 32767;
+					end
+					else if(ADPCM_SAMPLE_IMA_next < -32768) begin
+						ADPCM_SAMPLE_IMA_next = -32768;
+					end
+					if(step_index_IMA_next > 88) begin
+						step_index_IMA_next = 88;
+					end
+					else if (step_index_IMA_next < 0) begin
+						step_index_IMA_next = 0;
+					end
+					// step_IMA_next = vox_ADPCM_step_table[step_index_IMA_next];	// Works but badly
+					step_IMA_next = ima_step_table[step_index_IMA_next];
+					// step_IMA_next = step_IMA * vox_ADPCM_step_table[step_index_IMA_next];
+					// step_IMA_next = ((9 * (step_IMA * vox_ADPCM_step_table[step_index_IMA_next])) >> 3); // Best approximation of
+				end
+			end
+			default: ;
+		endcase
+	end
 
-	// 				step_index_R_next = step_index_R + ima_index_table[nibble];
-	// 				if(step_index_R_next >= 89) begin
-	// 					step_index_R_next = 88;
-	// 				end
-	// 				else if (step_index_R_next < 0) begin
-	// 					step_index_R_next = 0;
-	// 				end
-					
-	// 			end
-	// 		end
-	// 		default: ;
-	// 	endcase
-	// end
-
-	// always_ff @ (posedge clk50 or posedge reset) begin
-	// 	if (reset) begin
-	// 		ADPCM_SAMPLE_R <= 0;
-	// 		ADPCM_PREVSAMPLE_R <= 0;
-	// 		ADPCM_CALC_R_STATE <= 0;
-	// 		step_index_R <= 0;
-	// 	end
-	// 	else begin
-	// 		ADPCM_SAMPLE_R <= ADPCM_SAMPLE_R_next;
-	// 		ADPCM_PREVSAMPLE_R <= ADPCM_PREVSAMPLE_R_next;
-	// 		ADPCM_CALC_R_STATE <= ADPCM_CALC_R_STATE_next;
-	// 		step_index_R <= step_index_R_next;
-	// 	end
-	// end
+	always_ff @ (posedge clk50 or posedge reset) begin
+		if (reset) begin
+			ADPCM_SAMPLE_IMA <= 0;
+			// ADPCM_PREVSAMPLE_IMA <= 0;
+			ADPCM_CALC_IMA_STATE <= 1'b0;
+			step_index_IMA <= 0;
+			step_IMA <= 7;
+			IMA_nibble_high <= 1'b0;
+		end
+		else if (IMA_ADPCM_LOADSTART) begin
+			ADPCM_SAMPLE_IMA <= 0;
+			// ADPCM_PREVSAMPLE_IMA <= 0;
+			ADPCM_CALC_IMA_STATE <= 1'b0;
+			step_index_IMA <= 16;
+			step_IMA <= 16;
+			IMA_nibble_high <= 1'b0;
+		end
+		else begin
+			// ADPCM_SAMPLE_IMA <= ADPCM_SAMPLE_IMA_next[15:0];
+			ADPCM_SAMPLE_IMA <= ADPCM_SAMPLE_IMA_next;
+			// ADPCM_PREVSAMPLE_IMA <= ADPCM_PREVSAMPLE_IMA_next;
+			ADPCM_CALC_IMA_STATE <= ADPCM_CALC_IMA_STATE_next;
+			step_index_IMA <= step_index_IMA_next;
+			step_IMA <= step_IMA_next;
+			IMA_nibble_high <= IMA_nibble_high_next;
+		end
+	end
 
 	shortint ima_index_table[16] = '{
 			-1, -1, -1, -1, 2, 4, 6, 8,
