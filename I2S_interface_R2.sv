@@ -314,7 +314,7 @@ module I2S_interface_R2 (
 							// playback_type_next = 4'h1;	// Playback type display: 1 for basic PCM
 						end
 						default : begin
-							playback_type_next = 4'hA;	// "A" for ADPCM!
+							playback_type_next = 4'hd;	// "d" for vox aDpcm!
 							I2S_nextstate = IMA_ADPCM_start_wait_zerocount;	// If anything else, assume is VOX ADPCM
 						end
 					endcase		
@@ -693,8 +693,14 @@ module I2S_interface_R2 (
 	// g711 calculation
 	logic unsigned [13:0] g711_sample, g711_sample_next;		// u-law is 14, larger of the two.
 	logic g711_CALC_STATE, g711_CALC_STATE_next;	// This is the state
-	logic [3:0] bottom_nibble;
-	assign bottom_nibble	= BITQUEUE[43:40];
+	logic [3:0] alaw_bottom_nibble;
+	logic [7:0] alaw_byte; 
+	assign alaw_byte			= (BITQUEUE[47:40] ^ 8'h55);	// "Even bits are inverted" is how Alaw works.
+	assign alaw_bottom_nibble	= alaw_byte[3:0];
+	logic [3:0] ulaw_bottom_nibble;
+	logic [7:0] ulaw_byte;
+	assign ulaw_byte = ~BITQUEUE[47:40];
+	assign ulaw_bottom_nibble = ulaw_byte[3:0];
 	logic g711_calc;
 
 	always_comb begin
@@ -710,53 +716,53 @@ module I2S_interface_R2 (
 				if(g711_calc)	begin	// if called upon
 					case (g711_law_type)
 						1'b1 : begin	// u-law
-							casez (BITQUEUE[46:44]) // Check the top byte
+							casez (ulaw_byte[6:4]) // Check the top byte
 								3'b000 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:5] = 8'h1;
-									g711_sample_next[4:1] = bottom_nibble;
+									g711_sample_next[4:1] = ulaw_bottom_nibble;
 									g711_sample_next[0] = 1'b1;
 								end
 								3'b001 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:6] = 7'h1;
-									g711_sample_next[5:2] = bottom_nibble;
+									g711_sample_next[5:2] = ulaw_bottom_nibble;
 									g711_sample_next[1:0] = 2'b10;
 								end
 								3'b010 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:7] = 6'h1;
-									g711_sample_next[6:3] = bottom_nibble;
+									g711_sample_next[6:3] = ulaw_bottom_nibble;
 									g711_sample_next[2:0] = 3'b100;
 								end
 								3'b011 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:8] = 5'h1;
-									g711_sample_next[7:4] = bottom_nibble;
+									g711_sample_next[7:4] = ulaw_bottom_nibble;
 									g711_sample_next[3:0] = 4'b1000;
 								end
 								3'b100 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:9] = 4'h1;
-									g711_sample_next[8:5] = bottom_nibble;
+									g711_sample_next[8:5] = ulaw_bottom_nibble;
 									g711_sample_next[4:0] = 5'b10000;
 								end
 								3'b101 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:10] = 3'h1;
-									g711_sample_next[9:6] = bottom_nibble;
+									g711_sample_next[9:6] = ulaw_bottom_nibble;
 									g711_sample_next[5:0] = 6'b100000;
 								end
 								3'b110 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12:11] = 2'h1;
-									g711_sample_next[10:7] = bottom_nibble;
+									g711_sample_next[10:7] = ulaw_bottom_nibble;
 									g711_sample_next[6:0] = 7'b1000000;
 								end
 								3'b111 : begin
 									g711_sample_next[13] = sign;
 									g711_sample_next[12] = 1'h1;
-									g711_sample_next[11:8] = bottom_nibble;
+									g711_sample_next[11:8] = ulaw_bottom_nibble;
 									g711_sample_next[7:0] = 8'b10000000;
 								end
 								default: ;
@@ -767,58 +773,58 @@ module I2S_interface_R2 (
 							end
 						end
 						1'b0 : begin	// A-law
-							casez (BITQUEUE[46:44]) // Check the top byte
+							casez (alaw_byte[6:4]) // Check the top byte
 								3'b000 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:6] = 7'h0;
-									g711_sample_next[5:2] = bottom_nibble;
+									g711_sample_next[5:2] = alaw_bottom_nibble;
 									g711_sample_next[1:0] = 2'b10;
 								end
 								3'b001 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:6] = 7'h1;
-									g711_sample_next[5:2] = bottom_nibble;
+									g711_sample_next[5:2] = alaw_bottom_nibble;
 									g711_sample_next[1:0] = 2'b10;
 								end
 								3'b010 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:7] = 6'h1;
-									g711_sample_next[6:3] = bottom_nibble;
+									g711_sample_next[6:3] = alaw_bottom_nibble;
 									g711_sample_next[2:0] = 3'b100;
 								end
 								3'b011 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:8] = 5'h1;
-									g711_sample_next[7:4] = bottom_nibble;
+									g711_sample_next[7:4] = alaw_bottom_nibble;
 									g711_sample_next[3:0] = 4'b1000;
 								end
 								3'b100 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:9] = 4'h1;
-									g711_sample_next[8:5] = bottom_nibble;
+									g711_sample_next[8:5] = alaw_bottom_nibble;
 									g711_sample_next[4:0] = 5'b10000;
 								end
 								3'b101 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:10] = 3'h1;
-									g711_sample_next[9:6] = bottom_nibble;
+									g711_sample_next[9:6] = alaw_bottom_nibble;
 									g711_sample_next[5:0] = 6'b100000;
 								end
 								3'b110 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12:11] = 2'h1;
-									g711_sample_next[10:7] = bottom_nibble;
+									g711_sample_next[10:7] = alaw_bottom_nibble;
 									g711_sample_next[6:0] = 7'b1000000;
 								end
 								3'b111 : begin
 									g711_sample_next[13] = ~sign;
 									g711_sample_next[12] = 1'h1;
-									g711_sample_next[11:8] = bottom_nibble;
+									g711_sample_next[11:8] = alaw_bottom_nibble;
 									g711_sample_next[7:0] = 8'b10000000;
 								end
 								default: ;
 							endcase
-							if(sign) begin	// Change from signed-magnitude to 2s-complement
+							if(~sign) begin	// Change from signed-magnitude to 2s-complement
 								g711_sample_next = (14'b10000000000000 - g711_sample_next);
 							end
 							g711_sample_next[0] = g711_sample_next[13];
