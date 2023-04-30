@@ -1037,7 +1037,7 @@ module I2S_interface_R2 (
 						diff_IMA = diff_IMA + (step_IMA >> 1);
 					if(IMA_nibble[0])
 						diff_IMA = diff_IMA + (step_IMA >> 2);
-					case (sign)
+					case (IMA_nibble[3])
 						1'b1 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA - diff_IMA;
 						1'b0 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA + diff_IMA;
 						default: ;
