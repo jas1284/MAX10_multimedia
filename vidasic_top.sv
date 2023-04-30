@@ -1445,7 +1445,7 @@ end
 
     always_comb begin
         if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
-            calc_red = 8'h0;
+            calc_red = 8'h0;    // Basically zero it out if we're beyond the video box. 
             calc_green = 8'h0;
             calc_blue = 8'h0;
         end
