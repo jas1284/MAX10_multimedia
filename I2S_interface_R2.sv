@@ -993,9 +993,11 @@ module I2S_interface_R2 (
 	shortint step_index_IMA, step_index_IMA_next;
 	int diff_IMA;
 	logic [3:0] IMA_nibble;
+	logic signed [3:0] IMA_nibble_signed;
+	assign IMA_nibble_signed = IMA_nibble;
 	logic IMA_nibble_high, IMA_nibble_high_next;
 
-	always_comb begin
+	always_comb begin	// for IMA-WAV,we need to playback low nibble before high nibble. 
 		case (IMA_nibble_high)
 			1'b1 : begin
 				IMA_nibble = nibble;
@@ -1037,7 +1039,7 @@ module I2S_interface_R2 (
 						diff_IMA = diff_IMA + (step_IMA >> 1);
 					if(IMA_nibble[0])
 						diff_IMA = diff_IMA + (step_IMA >> 2);
-					case (sign)
+					case (IMA_nibble[3])
 						1'b1 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA - diff_IMA;
 						1'b0 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA + diff_IMA;
 						default: ;

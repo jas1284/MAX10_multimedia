@@ -639,7 +639,7 @@ assign PEI = BITQUEUE[47];   // PEI - if spare info is available
 
 // Values for the Group Block layer
 logic GBSC;     // boolean value - is the left 16 bits a GBSC?
-logic GN;       // Group Number, read back from bitqueue
+logic [3:0] GN;       // Group Number, read back from bitqueue
 logic [4:0] GQUANT; // Quantizer Information - cryptic, 5 bits.
 // I should figure out wtf quantizer information even does for us. 
 // Something about a natural binary representation of quantizer values?
@@ -1384,7 +1384,7 @@ end
                         .DrawY(vga_y)
     );
 
-    logic [7:0] calc_red, calc_green, calc_blue;
+    logic signed [8:0] calc_red, calc_green, calc_blue;
 
     always_ff @( posedge vga_clk or posedge reset ) begin 
         if(reset) begin
@@ -1445,14 +1445,14 @@ end
 
     always_comb begin
         if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
-            calc_red = 8'h0;    // Basically zero it out if we're beyond the video box. 
-            calc_green = 8'h0;
-            calc_blue = 8'h0;
+            calc_red = 9'sh0;    // Basically zero it out if we're beyond the video box. 
+            calc_green = 9'sh0;
+            calc_blue = 9'sh0;
         end
         else begin  // rounding a lot here... rec.601 to RGB conversion, stolen from wikipedia wiki/YCbCr
-            calc_red = ((298 * VGA_Y_RDDATA)>>8) + ((408*VGA_Cr_RDDATA)>>8) + 223;
-            calc_green = ((298 * VGA_Y_RDDATA)>>8) - ((100*VGA_Cb_RDDATA)>>8) - ((208*VGA_Cr_RDDATA)>>8)+136;
-            calc_blue = ((298 * VGA_Y_RDDATA)>>8) + ((516*VGA_Cb_RDDATA)>>8) - 277;
+            calc_red = ((149 * VGA_Y_RDDATA_minus16) >>> 7) + ((51*VGA_Cr_RDDATA_minus128) >>> 5);
+            calc_green = ((149 * VGA_Y_RDDATA_minus16) >>> 7) - ((25 * VGA_Cb_RDDATA_minus128) >>> 6) - ((13*VGA_Cr_RDDATA_minus128) >>> 4);
+            calc_blue = ((149 * VGA_Y_RDDATA_minus16) >>> 7) + ((129 * VGA_Cb_RDDATA_minus128) >>> 6);
         end
     end
 
@@ -1461,6 +1461,8 @@ end
     logic ASIC_Y_RDEN, ASIC_Y_WREN;
     logic [14:0] VGA_Y_ADDR;
     logic [7:0] VGA_Y_RDDATA;
+    logic signed [8:0] VGA_Y_RDDATA_minus16;
+    assign VGA_Y_RDDATA_minus16 = VGA_Y_RDDATA - 9'sd16;
 
     // Assign the offset, that gets us to the current macroblock
     // such that raster-order within the macroblock should be sufficient from here. 
@@ -1485,6 +1487,8 @@ end
     logic ASIC_Cb_RDEN, ASIC_Cb_WREN;
     logic [12:0] VGA_C_ADDR;    // Unified VGA address for Cb/Cr
     logic [7:0] VGA_Cb_RDDATA;
+    logic signed [8:0] VGA_Cb_RDDATA_minus128;
+    assign VGA_Cb_RDDATA_minus128 = VGA_Cb_RDDATA - 9'sd128;
     sram_13bit Cb_sram(.address_a(ASIC_Cb_ADDR),
                     .address_b(VGA_C_ADDR),
                     .clock(clk50),
@@ -1503,6 +1507,8 @@ end
     logic ASIC_Cr_RDEN, ASIC_Cr_WREN;
     // logic [12:0] VGA_Cr_ADDR;
     logic [7:0] VGA_Cr_RDDATA;
+    logic signed [8:0] VGA_Cr_RDDATA_minus128;
+    assign VGA_Cr_RDDATA_minus128 = VGA_Cr_RDDATA - 9'sd128;
     sram_13bit Cr_sram(.address_a(ASIC_Cr_ADDR),
                     .address_b(VGA_C_ADDR),
                     .clock(clk50),
