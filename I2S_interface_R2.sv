@@ -1030,13 +1030,13 @@ module I2S_interface_R2 (
 					ADPCM_CALC_IMA_STATE_next = 1'b1;
 					step_index_IMA_next = step_index_IMA + ima_index_table[IMA_nibble];
 					// ADPCM_PREVSAMPLE_IMA_next = ADPCM_SAMPLE_IMA;
-					diff_IMA = step_IMA >> 3;
+					diff_IMA = step_IMA >>> 3;
 					if(IMA_nibble[2])
 						diff_IMA = diff_IMA + step_IMA;
 					if(IMA_nibble[1])
-						diff_IMA = diff_IMA + (step_IMA >> 1);
+						diff_IMA = diff_IMA + (step_IMA >>> 1);
 					if(IMA_nibble[0])
-						diff_IMA = diff_IMA + (step_IMA >> 2);
+						diff_IMA = diff_IMA + (step_IMA >>> 2);
 					case (IMA_nibble[3])
 						1'b1 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA - diff_IMA;
 						1'b0 : ADPCM_SAMPLE_IMA_next = ADPCM_SAMPLE_IMA + diff_IMA;
