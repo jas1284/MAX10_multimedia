@@ -86,24 +86,31 @@ begin
     end
 end
 
-// Ram readback buffering mechanism - makes sure we don't miss data.
-always_ff @ (posedge clk50 or posedge reset)
-begin
-    if(reset)
-    begin
-        RAM_BUFFERED_READBACK <= 16'h0;
-        RAM_DATA_BUFFER_STATE <= 1'b0;  // state: inactive
-    end
-    else if(RAM_DATA_BUFFER_STATE)  // If active state...
-    begin
-        if(ram_ack) begin
-            RAM_BUFFERED_READBACK <= ram_data;
-            RAM_DATA_BUFFER_STATE <= 0; // go back to inactive/unarmed state.
-        end
-    end
-    else
-        RAM_DATA_BUFFER_STATE <= RAM_DATA_BUFFER_EN;    // Wait to be activated.
-end
+	// Ram readback buffering mechanism - makes sure we don't miss data.
+	always_ff @ (posedge clk50 or posedge reset)
+	begin
+		if(reset)
+		begin
+			// RAM_DATA_RDEN <= 1'b0;
+			RAM_BUFFERED_READBACK <= 16'h0;
+			RAM_DATA_BUFFER_STATE <= 1'b0;  // state: inactive
+		end
+		else if(RAM_DATA_BUFFER_STATE)  // If active state...
+		begin
+			// RAM_DATA_RDEN <= 1'b1;
+			if(ram_ack) begin
+				RAM_BUFFERED_READBACK <= ram_data;
+				RAM_DATA_BUFFER_STATE <= 1'b0; // go back to inactive/unarmed state.
+			end
+		end
+		else	// Inactive state
+			// RAM_DATA_RDEN <= 1'b0;
+			RAM_DATA_BUFFER_STATE <= RAM_DATA_BUFFER_EN;    // Wait to be activated.
+	end
+
+	logic RDEN_override;
+	// assign RAM_DATA_RDEN = RAM_DATA_BUFFER_STATE;
+	assign ram_rden = (RAM_DATA_BUFFER_STATE |RDEN_override);
 
 always_comb 
 begin
@@ -112,7 +119,8 @@ begin
     READ_ADDR_NEXT = READ_ADDR; // addr doesnt change
     SHIFTCOUNT_NEXT = SHIFTCOUNT;   // shift-counter stays
     ram_addr = READ_ADDR;       // Pre-set the ram address
-    ram_rden = 1'b0; 
+//    ram_rden = 1'b0; 
+    RDEN_override = 1'b0; 
     q_nextstate = queue_state;  // stay in current state
     status_1 = 1'b0;    // lights - blank em 
     // status_2 = 1'b0;
@@ -146,9 +154,9 @@ begin
                 //         SHIFTCOUNT_NEXT = 6'h0;    // reset the shift-count
                 //     end
                 // end
-                if(SHIFTCOUNT_NEXT >= 7) begin     // Note that since we're in a COMB thus must use shiftcount_next!
+                if(SHIFTCOUNT_NEXT >= 1) begin     // Note that since we're in a COMB thus must use shiftcount_next!
                     q_nextstate = q_prefetch;  // we need to top up the queue. 
-                    ram_rden = 1'b1;        // Call upon RAM to send data.
+                    // ram_rden = 1'b1;        // Call upon RAM to send data.
                     // ram_addr = READ_ADDR;
                     RAM_DATA_BUFFER_EN = 1'b1;  // Arm the RAM readback data buffer
                     status_1 = 1'b1;
@@ -159,14 +167,14 @@ begin
         end
         q_prefetch: begin
             Q_RDY = 1'b1;
-            ram_rden = 1'b1;
+            // ram_rden = 1'b1;
             status_1 = 1'b1;
             if(shiftsig)
                 q_nextstate = q_prefetch_release;
         end
         q_prefetch_release: begin
             Q_RDY = 1'b1;
-            ram_rden = 1'b1;
+            // ram_rden = 1'b1;
             status_1 = 1'b1;
             if(~shiftsig)
             begin
@@ -175,7 +183,7 @@ begin
                 SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;   // shift count increments, should be 1 (4 to test)
                 if(SHIFTCOUNT_NEXT >= 16) begin // If the buffer has disarmed, it must have caught data
                     q_nextstate = q_shift;  // we should be clear to return to normal operation.
-                    ram_rden = 1'b0;    // let the RAM rest
+                    // ram_rden = 1'b0;    // let the RAM rest
                     BITQ_NEXT[15:8] = RAM_BUFFERED_READBACK[7:0];    // little-vs-big-endian tomfoolery
                     BITQ_NEXT[7:0] = RAM_BUFFERED_READBACK[15:8];
                     READ_ADDR_NEXT = READ_ADDR + 1;     // increment to next ram addr for next time.
@@ -196,18 +204,18 @@ begin
         //     end
         // end
         q_load1 : begin // load 1st word - most common
-            ram_rden = 1'b1;        // Call upon RAM to send data.
+            // ram_rden = 1'b1;        // Call upon RAM to send data.
             // ram_addr = READ_ADDR;
             RAM_DATA_BUFFER_EN = 1'b1;  // Arm the RAM readback data buffer
             status_1 = 1'b1;
             q_nextstate = q_load1_wait;
         end
         q_load1_wait : begin
-            ram_rden = 1'b1;        // Call upon RAM to send data.
+            // ram_rden = 1'b1;        // Call upon RAM to send data.
             // ram_addr = READ_ADDR;
             if(RAM_DATA_BUFFER_STATE == 1'b0) begin // If the buffer has disarmed, it must have caught data
                 q_nextstate = q_shift;  // we should be clear to return to normal operation.
-                ram_rden = 1'b0;    // let the RAM rest
+                // ram_rden = 1'b0;    // let the RAM rest
                 BITQ_NEXT[15:8] = RAM_BUFFERED_READBACK[7:0];    // little-vs-big-endian tomfoolery
                 BITQ_NEXT[7:0] = RAM_BUFFERED_READBACK[15:8];
                 READ_ADDR_NEXT = READ_ADDR + 1;     // increment to next ram addr for next time.
@@ -215,7 +223,7 @@ begin
             // otherwise, we keep waiting, lol.
         end
         q_load3 : begin // load 3rd word
-            ram_rden = 1'b1;
+            RDEN_override = 1'b1;
             // ram_addr = READ_ADDR;
             if(ram_ack) begin
                 q_nextstate = q_load3_wait;
@@ -235,7 +243,7 @@ begin
         end
         q_load2  :  // load 2nd word
         begin
-            ram_rden = 1'b1;
+            RDEN_override = 1'b1;
             // ram_addr = READ_ADDR;
             if(ram_ack) begin
                 q_nextstate = q_load2_wait;
