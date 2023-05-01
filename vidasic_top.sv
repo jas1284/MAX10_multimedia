@@ -56,7 +56,7 @@ assign hex_out_4 = BITQUEUE[43:40];
 assign hex_out_3 = BITQUEUE[39:36];
 assign hex_out_2 = BITQUEUE[35:32];
 assign hex_out_1 = BITQUEUE[31:28];
-assign hex_out_0 = BITQUEUE[27:24];
+// assign hex_out_0 = BITQUEUE[27:24];
 
 // logic slowclk;
 
@@ -292,7 +292,18 @@ enum logic [10:0]
     piclayer_readTCOEFF,
     piclayer_skipTCOEFF,
     goblayer,
-    mblayer
+    mblayer,
+    // YUV playback states... one giant bastard state machine
+    YUV4START,
+    YUV4FRAME, 
+    YUV4FRAME_skip,
+    YUV4FRAME_search_skip,
+    YUV4FRAME_U,
+    YUV4FRAME_U_skip,
+    YUV4FRAME_V,
+    YUV4FRAME_V_skip,
+    YUV4FRAME_Y,
+    YUV4FRAME_Y_skip
 }   cur_layer, next_layer;
 logic [5:0] countdown, countdown_next;
 logic shiftsig, shiftsig_next;
@@ -307,22 +318,31 @@ logic [7:0] saved_TCOEFF_table [64];
 logic [7:0] next_TCOEFF_table_entry;
 logic [5:0] saved_TCOEFF_zigzag, next_TCOEFF_zigzag;
 logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
+logic [3:0] playback_type_next, playback_type; // Keep track of the type of playback
+// logic [7:0] SRAM_WRDATA, SRAM_WRDATA_next;   // the input should already be buffered... sus.
+
+assign hex_out_0 = playback_type;
 
 // FF Logic for the big-bloody-state-machine!
 always_ff @( posedge clk50 or posedge reset ) begin
     if(reset) begin
         for(int i = 0; i < 64; i++)
             saved_TCOEFF_table[i] <= 8'b0;
-        saved_TCOEFF_zigzag <= 0;
-        saved_block_layer <= 0;
+        saved_TCOEFF_zigzag <= 6'h0;
+        saved_block_layer <= 3'h0;
         // saved_TCOEFF_count <= 0;
-        saved_MTYPE_vec <= 0;
-        saved_MBA <= 0;
-        saved_QUANT <= 0;
-        saved_GN <= 0;
-        saved_TR <= 0;
+        saved_MTYPE_vec <= 4'h0;
+        saved_MBA <= 6'h0;
+        saved_QUANT <= 5'h0;
+        saved_GN <= 4'h0;
+        saved_TR <= 5'h0;
         cur_layer <= piclayer_readPSC;  // first thing is to always read PSC.
-        countdown <= 0;
+        countdown <= 6'h0;
+        playback_type <= 4'h0;
+        Y_raster_order_counter <= 16'h0;
+        YUVwrite_Y_x <= 8'h0;
+        YUVwrite_Y_y <= 8'h0;
+        U_raster_order_counter <= 16'h0;
     end
     else if (Q_RDY & run) begin   // Only run if the queue is ready-to-go!
         if(next_TCOEFF_table_WREN)
@@ -337,6 +357,11 @@ always_ff @( posedge clk50 or posedge reset ) begin
         saved_TR <= next_TR;
         cur_layer <= next_layer;
         countdown <= countdown_next;
+        playback_type <= playback_type_next;
+        Y_raster_order_counter <= Y_raster_order_counter_next;
+        YUVwrite_Y_x <= YUVwrite_Y_x_next;
+        YUVwrite_Y_y <= YUVwrite_Y_y_next;
+        U_raster_order_counter <= U_raster_order_counter_next;
     end
 end
 
@@ -364,16 +389,31 @@ always_comb begin
     next_TCOEFF_zigzag = saved_TCOEFF_zigzag;
     next_TCOEFF_table_WREN = 0; // don't write to TCOEFF TABLE unless AUTHORIZED !
     next_TCOEFF_table_entry = 0;
+
+    playback_type_next = playback_type;
+    Y_raster_order_counter_next = Y_raster_order_counter;
+    YUVwrite_Y_x_next = YUVwrite_Y_x;
+    YUVwrite_Y_y_next = YUVwrite_Y_y;
+    U_raster_order_counter_next = U_raster_order_counter;
+    ASIC_Cb_ADDR = 13'h0;
+    ASIC_Cr_ADDR = 13'h0;
+    ASIC_Y_WREN = 1'b0;
+    ASIC_Cb_WREN = 1'b0;
+    ASIC_Cr_WREN = 1'b0;
+    ASIC_Y_WRDATA = 16'h0;
+    ASIC_Cb_WRDATA = 16'h0;
+    ASIC_Cr_WRDATA = 16'h0;
     case (cur_layer)
         wait_for_it:    // Consider this an ERROR STATE!
             status_2 = 1'b1;
         piclayer_readPSC : begin
             if(PSC) begin
+                playback_type_next = 4'h1;   // 1 for "h.261"
                 countdown_next = 6'd20;
                 next_layer = piclayer_skipPSC;
             end
             else // we SHOULD see a PSC, or something screwed up!
-                next_layer = wait_for_it;
+                next_layer = YUV4START;
         end
         piclayer_skipPSC : begin
             if(countdown > 0) begin // make 20 shifts
@@ -524,19 +564,21 @@ always_comb begin
                     shiftsig_next = 1'b1;
                 end
             end
-            else    // done? ok, onwards to TR.
+            else begin  // done? ok, onwards to TR.
                 if(saved_MTYPE_vec[3])  // if MQUANT present
                     next_layer = piclayer_readMQUANT;
                 else if(saved_MTYPE_vec[2]) // if MVD present
                     next_layer = piclayer_readMVD;
                 else if(saved_MTYPE_vec[1]) // if CBP present
                     next_layer = piclayer_readCBP;
-                else // if(saved_MTYPE_vec[0])  // finaly if somehow TCOEFF
+                else begin  // if(saved_MTYPE_vec[0])  // finaly if somehow TCOEFF
                     next_layer = piclayer_readTCOEFF;
                     next_TCOEFF_zigzag = 0; // Up to 64 TCOEFFS per block
                     // next_TCOEFF_count = 0; // up to 64 TCOEFFS per block
                     next_block_layer = 0;  // up to 6 blocks per macroblock
                     // there is no MTYPE where NONE are present.
+                end
+            end    
         end
         piclayer_readTCOEFF : begin // We're in the block-layer now
             next_layer = piclayer_skipTCOEFF;
@@ -625,9 +667,192 @@ always_comb begin
                 end
             end
         end
+        YUV4START : begin
+            if(BITQUEUE[47:16] == 32'h59555634) begin   // = "YUV4"
+                next_layer = YUV4FRAME;
+                playback_type_next = 4'h4;   // 4 for "YUV4"
+            end
+            else
+                next_layer = wait_for_it;   // error state
+        end
+        YUV4FRAME : begin
+            if (BITQUEUE[47:16] == 32'h4652414D) begin  // = "FRAM"
+                countdown_next = 6'h48; // skip to beginning of first frame
+                next_layer = YUV4FRAME_skip;
+            end
+            else begin
+                countdown_next = 6'h8;  // skip 8 bits (1 char) and try again
+                next_layer = YUV4FRAME_search_skip;
+            end
+        end
+        YUV4FRAME_search_skip : begin
+            if(countdown > 0) begin // make N shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else    // done? ok, search for "FRAM" again.
+                next_layer = YUV4FRAME;
+        end
+        YUV4FRAME_skip : begin
+            if(countdown > 0) begin // make N shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else begin  // done? ok, onwards to Y decode
+                if (next_frame) // This holds us at 30FPS. Should allow SDcard to load.
+                    next_layer = YUV4FRAME_Y;
+                Y_raster_order_counter_next = 16'h0;
+            end
+        end
+        YUV4FRAME_Y : begin
+            ASIC_Y_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            ASIC_Y_WREN = 1'b1; // ask for that write
+            countdown_next = 6'h8;  // Skip the value once written.
+            next_layer = YUV4FRAME_Y_skip;
+        end
+        YUV4FRAME_Y_skip : begin
+            if(countdown > 0) begin // make N shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else  begin
+                YUVwrite_Y_x_next = YUVwrite_Y_x + 1;
+                if(YUVwrite_Y_x_next >= 176) begin
+                    YUVwrite_Y_x_next = 8'h0;
+                    YUVwrite_Y_y_next = YUVwrite_Y_y + 1;
+                end
+                if(Y_raster_order_counter >= 16'h63FF) begin   // 176*144 - 1
+                    Y_raster_order_counter_next = 16'h0;    // reset the counter
+                    U_raster_order_counter_next = 16'h0;
+                    YUVwrite_Y_x_next = 8'h0;
+                    YUVwrite_Y_y_next = 8'h0;
+                    next_layer = YUV4FRAME_U;   // we're done with Ys... 
+                end
+                else begin
+                    Y_raster_order_counter_next = Y_raster_order_counter + 16'h1;
+                    next_layer = YUV4FRAME_Y;   // next Y
+                end
+            end
+        end
+        YUV4FRAME_U : begin
+            ASIC_Cb_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            ASIC_Cb_ADDR = ASIC_U_ADDR;
+            ASIC_Cb_WREN = 1'b1;
+            countdown_next = 6'h8;
+            next_layer = YUV4FRAME_U_skip;
+        end
+        YUV4FRAME_U_skip : begin
+            if(countdown > 0) begin // make N shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else  begin
+                if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
+                    U_raster_order_counter_next = 16'h0;    // reset the counter
+                    next_layer = YUV4FRAME_V;   // we're done with Us... 
+                end
+                else begin
+                    U_raster_order_counter_next = U_raster_order_counter + 16'h1;
+                    next_layer = YUV4FRAME_U;   // next U
+                end
+            end
+        end
+        YUV4FRAME_V : begin
+            ASIC_Cr_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            ASIC_Cr_ADDR = ASIC_U_ADDR;
+            ASIC_Cr_WREN = 1'b1;
+            countdown_next = 6'h8;
+            next_layer = YUV4FRAME_V_skip;
+        end
+        YUV4FRAME_V_skip : begin
+            if(countdown > 0) begin // make N shifts
+                if(shiftsig) begin
+                    shiftsig_next = 1'b0;
+                    countdown_next = (countdown - 1);
+                end
+                else begin
+                    shiftsig_next = 1'b1;
+                end
+            end
+            else  begin
+                if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
+                    U_raster_order_counter_next = 16'h0;    // reset the counter
+                    next_layer = YUV4FRAME;   // we're done with Us... 
+                end
+                else begin
+                    U_raster_order_counter_next = U_raster_order_counter + 16'h1;   // reusing U counter for V..
+                    next_layer = YUV4FRAME_V;   // next U
+                end
+            end
+        end
         default: ;
     endcase
 end
+
+    // YUV output calculation for this crap
+    logic [15:0] Y_raster_order_counter, Y_raster_order_counter_next;   // which pixel, in raster-order.
+    logic [8:0] YUVwrite_Y_x, YUVwrite_Y_y; // x and y values, scaled to be 176x144. 
+    logic [8:0] YUVwrite_Y_x_next, YUVwrite_Y_y_next; // x and y values, scaled to be 176x144. 
+    logic [4:0]  YUVwrite_Y_MB_row,  YUVwrite_Y_MB_col; // x and y values of the macroblock... necessary for computing block raster and index.
+    logic [7:0]  Y_raster_order_MB; // which macroblock, in raster-order.
+    logic [14:0] YUVwrite_Y_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
+    // logic [7:0] YUVwrite_Y_sub;
+    logic [3:0] YUVwrite_Y_MB_internal_col, YUVwrite_Y_MB_internal_row; // calculated rows and cols inside the macroblocks
+
+    always_comb begin    // scale down by 3x;
+        // Macroblocks are in raster-order, with the pixels within each macroblock in raster-order.
+        // YUVwrite_Y_x = Y_raster_order_counter % 176;
+        // YUVwrite_Y_y = Y_raster_order_counter / 176;
+        YUVwrite_Y_MB_col = YUVwrite_Y_x >> 4;
+        YUVwrite_Y_MB_row = YUVwrite_Y_y >> 4;
+        YUVwrite_Y_MB_offset = ((YUVwrite_Y_MB_row* 11) << 8) + (YUVwrite_Y_MB_col << 8);
+        YUVwrite_Y_MB_internal_col = YUVwrite_Y_x[3:0];
+        YUVwrite_Y_MB_internal_row = YUVwrite_Y_y[3:0];
+        ASIC_Y_ADDR = YUVwrite_Y_MB_offset + (YUVwrite_Y_MB_internal_row << 4) + YUVwrite_Y_MB_internal_col;
+    end
+
+    // YUV output calculation for this crap
+    logic [12:0] ASIC_U_ADDR;
+    logic [15:0] U_raster_order_counter, U_raster_order_counter_next;   // which pixel, in raster-order.
+    logic [8:0] YUVwrite_U_x, YUVwrite_U_y; // x and y values, scaled to be 176x144. 
+    logic [4:0]  YUVwrite_U_MB_row,  YUVwrite_U_MB_col; // x and y values of the macroblock... necessary for computing block raster and index.
+    logic [7:0]  U_raster_order_MB; // which macroblock, in raster-order.
+    logic [14:0] YUVwrite_U_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
+    // logic [7:0] YUVwrite_U_sub;
+    logic [2:0] YUVwrite_U_MB_internal_col, YUVwrite_U_MB_internal_row; // calculated rows and cols inside the macroblocks
+
+    always_comb begin    // scale down by 3x;
+        // Macroblocks are in raster-order, with the pixels within each macroblock in raster-order.
+        YUVwrite_U_x = U_raster_order_counter % 88;
+        YUVwrite_U_y = U_raster_order_counter / 88;
+        YUVwrite_U_MB_col = YUVwrite_U_x >> 3;
+        YUVwrite_U_MB_row = YUVwrite_U_y >> 3;
+        YUVwrite_U_MB_offset = ((YUVwrite_U_MB_row* 11) << 6) + (YUVwrite_U_MB_col << 6);
+        YUVwrite_U_MB_internal_col = YUVwrite_U_x[2:0];
+        YUVwrite_U_MB_internal_row = YUVwrite_U_y[2:0];
+        ASIC_U_ADDR = YUVwrite_U_MB_offset + (YUVwrite_U_MB_internal_row << 3) + YUVwrite_U_MB_internal_col;
+    end
+
 
 logic [5:0] skipcount;  // counter - How many bits to skip?
 
@@ -1392,6 +1617,16 @@ end
                         .DrawY(vga_y)
     );
 
+    logic NTSC_clk;
+    logic next_frame;
+    always_ff @ (negedge vsync or posedge reset) begin
+        if (reset)
+            NTSC_clk <= 1'b0;
+		else 
+            NTSC_clk <= ~NTSC_clk;
+    end
+    assign next_frame = ((~NTSC_clk) && (~vsync));
+
     logic signed [8:0] calc_red, calc_green, calc_blue;
 
     always_ff @( posedge vga_clk or posedge reset ) begin 
@@ -1412,11 +1647,11 @@ end
         end
     end
 
-    logic [14:0] calc_Y_MB_offset;
+    logic [14:0] calc_Y_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
     // logic [7:0] calc_Y_sub;
-    logic [8:0] Yscale_x, Yscale_y;
-    logic [4:0] calc_Y_MB_col, calc_Y_MB_row;
-    logic [3:0] calc_Y_MB_internal_col, calc_Y_MB_internal_row;
+    logic [8:0] Yscale_x, Yscale_y; // x and y values, scaled to be 176x144. 
+    logic [4:0] calc_Y_MB_col, calc_Y_MB_row;   // calculated macroblock row and columns.
+    logic [3:0] calc_Y_MB_internal_col, calc_Y_MB_internal_row; // calculated rows and cols inside the macroblocks
 
     assign Yscale_x = vga_x / 3; // scale-x should be 0-175, plus some
     assign Yscale_y = vga_y / 3; // scale-y should be 0-143, plus some

@@ -1,9 +1,9 @@
-21:54:34 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+19:41:13 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
 make all 
 Info: Building ../SGTL5000_I2C_bsp/
 C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
 [BSP build complete]
 [SGTL5000_I2C build complete]
 
-21:54:35 Build Finished (took 595ms)
+19:41:14 Build Finished (took 1s.140ms)
 

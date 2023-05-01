@@ -1591,3 +1591,99 @@ Info: Building ../SGTL5000_I2C_bsp/
 C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
 [BSP build complete]
 [SGTL5000_I2C build complete]
+18:30:37 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+Makefile not up to date.
+settings.bsp has been modified since the BSP Makefile was generated.
+
+Generate the BSP to update the Makefile, and then build again.
+
+To generate from Eclipse:
+ 1. Right-click the BSP project.
+ 2. In the Nios II Menu, click Generate BSP.
+
+To generate from the command line:
+ nios2-bsp-generate-files --settings=<settings file> --bsp-dir=<target bsp files directory>
+
+make[1]: *** [makefile] Error 1
+make: *** [../SGTL5000_I2C_bsp/-recurs-make-lib] Error 2
+18:30:43 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+Makefile not up to date.
+settings.bsp has been modified since the BSP Makefile was generated.
+
+Generate the BSP to update the Makefile, and then build again.
+
+To generate from Eclipse:
+ 1. Right-click the BSP project.
+ 2. In the Nios II Menu, click Generate BSP.
+
+To generate from the command line:
+ nios2-bsp-generate-files --settings=<settings file> --bsp-dir=<target bsp files directory>
+
+make[1]: *** [makefile] Error 1
+make: *** [../SGTL5000_I2C_bsp/-recurs-make-lib] Error 2
+18:30:44 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+Makefile not up to date.
+settings.bsp has been modified since the BSP Makefile was generated.
+
+Generate the BSP to update the Makefile, and then build again.
+
+To generate from Eclipse:
+ 1. Right-click the BSP project.
+ 2. In the Nios II Menu, click Generate BSP.
+
+To generate from the command line:
+ nios2-bsp-generate-files --settings=<settings file> --bsp-dir=<target bsp files directory>
+
+make: *** [makefile] Error 1
+18:30:58 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+18:30:59 **** Incremental Build of configuration Nios II for project SGTL5000_I2C_bsp ****
+make all 
+[BSP build complete]
+18:31:23 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+18:32:53 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+19:33:52 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+19:34:54 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+19:37:16 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
+19:41:13 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+make all 
+Info: Building ../SGTL5000_I2C_bsp/
+C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
+[BSP build complete]
+[SGTL5000_I2C build complete]
