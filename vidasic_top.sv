@@ -343,6 +343,8 @@ always_ff @( posedge clk50 or posedge reset ) begin
         YUVwrite_Y_x <= 8'h0;
         YUVwrite_Y_y <= 8'h0;
         U_raster_order_counter <= 16'h0;
+        YUVwrite_U_x <= 8'h0;
+        YUVwrite_U_y <= 8'h0;
     end
     else if (Q_RDY & run) begin   // Only run if the queue is ready-to-go!
         if(next_TCOEFF_table_WREN)
@@ -362,6 +364,8 @@ always_ff @( posedge clk50 or posedge reset ) begin
         YUVwrite_Y_x <= YUVwrite_Y_x_next;
         YUVwrite_Y_y <= YUVwrite_Y_y_next;
         U_raster_order_counter <= U_raster_order_counter_next;
+        YUVwrite_U_x <= YUVwrite_U_x_next;
+        YUVwrite_U_y <= YUVwrite_U_y_next;
     end
 end
 
@@ -395,6 +399,8 @@ always_comb begin
     YUVwrite_Y_x_next = YUVwrite_Y_x;
     YUVwrite_Y_y_next = YUVwrite_Y_y;
     U_raster_order_counter_next = U_raster_order_counter;
+    YUVwrite_U_x_next = YUVwrite_U_x;
+    YUVwrite_U_y_next = YUVwrite_U_y;
     ASIC_Cb_ADDR = 13'h0;
     ASIC_Cr_ADDR = 13'h0;
     ASIC_Y_WREN = 1'b0;
@@ -736,7 +742,7 @@ always_comb begin
                     YUVwrite_Y_x_next = 8'h0;
                     YUVwrite_Y_y_next = YUVwrite_Y_y + 1;
                 end
-                if(Y_raster_order_counter >= 16'h63FF) begin   // 176*144 - 1
+                if(Y_raster_order_counter >= 16'h62FF) begin   // 176*144 - 1
                     Y_raster_order_counter_next = 16'h0;    // reset the counter
                     U_raster_order_counter_next = 16'h0;
                     YUVwrite_Y_x_next = 8'h0;
@@ -767,8 +773,15 @@ always_comb begin
                 end
             end
             else  begin
+                YUVwrite_U_x_next = YUVwrite_U_x + 1;
+                if(YUVwrite_U_x_next >= 88) begin
+                    YUVwrite_U_x_next = 8'h0;
+                    YUVwrite_U_y_next = YUVwrite_U_y + 1;
+                end
                 if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
                     U_raster_order_counter_next = 16'h0;    // reset the counter
+                    YUVwrite_U_x_next = 8'h0;
+                    YUVwrite_U_y_next = 8'h0;
                     next_layer = YUV4FRAME_V;   // we're done with Us... 
                 end
                 else begin
@@ -795,9 +808,16 @@ always_comb begin
                 end
             end
             else  begin
+                YUVwrite_U_x_next = YUVwrite_U_x + 1;
+                if(YUVwrite_U_x_next >= 88) begin
+                    YUVwrite_U_x_next = 8'h0;
+                    YUVwrite_U_y_next = YUVwrite_U_y + 1;
+                end
                 if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
                     U_raster_order_counter_next = 16'h0;    // reset the counter
-                    next_layer = YUV4FRAME;   // we're done with Us... 
+                    YUVwrite_U_x_next = 8'h0;
+                    YUVwrite_U_y_next = 8'h0;
+                    next_layer = YUV4FRAME;   // we're done with Vs... 
                 end
                 else begin
                     U_raster_order_counter_next = U_raster_order_counter + 16'h1;   // reusing U counter for V..
@@ -835,6 +855,7 @@ end
     logic [12:0] ASIC_U_ADDR;
     logic [15:0] U_raster_order_counter, U_raster_order_counter_next;   // which pixel, in raster-order.
     logic [8:0] YUVwrite_U_x, YUVwrite_U_y; // x and y values, scaled to be 176x144. 
+    logic [8:0] YUVwrite_U_x_next, YUVwrite_U_y_next; // x and y values, scaled to be 88x72. 
     logic [4:0]  YUVwrite_U_MB_row,  YUVwrite_U_MB_col; // x and y values of the macroblock... necessary for computing block raster and index.
     logic [7:0]  U_raster_order_MB; // which macroblock, in raster-order.
     logic [14:0] YUVwrite_U_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
@@ -843,8 +864,8 @@ end
 
     always_comb begin    // scale down by 3x;
         // Macroblocks are in raster-order, with the pixels within each macroblock in raster-order.
-        YUVwrite_U_x = U_raster_order_counter % 88;
-        YUVwrite_U_y = U_raster_order_counter / 88;
+        // YUVwrite_U_x = U_raster_order_counter % 88;
+        // YUVwrite_U_y = U_raster_order_counter / 88;
         YUVwrite_U_MB_col = YUVwrite_U_x >> 3;
         YUVwrite_U_MB_row = YUVwrite_U_y >> 3;
         YUVwrite_U_MB_offset = ((YUVwrite_U_MB_row* 11) << 6) + (YUVwrite_U_MB_col << 6);
@@ -1617,7 +1638,7 @@ end
                         .DrawY(vga_y)
     );
 
-    logic NTSC_clk;
+    logic NTSC_clk, NTSC_prev;
     logic next_frame;
     always_ff @ (negedge vsync or posedge reset) begin
         if (reset)
@@ -1625,7 +1646,14 @@ end
 		else 
             NTSC_clk <= ~NTSC_clk;
     end
-    assign next_frame = ((~NTSC_clk) && (~vsync));
+    always_ff @ (posedge clk50 or posedge reset) begin
+        if (reset) begin
+            NTSC_prev <= 1'b0;
+        end
+        else
+            NTSC_prev <= NTSC_clk;
+    end
+    assign next_frame = ((~NTSC_clk) && (NTSC_prev));   // A quick pulse, every now and then.
 
     logic signed [8:0] calc_red, calc_green, calc_blue;
 
