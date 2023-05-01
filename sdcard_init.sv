@@ -156,6 +156,8 @@ begin
 				if(ram_addr_r >= 36'h7FFFFFFFF)
 					state_x = DONE;
 			end
+			else
+				ram_init_error = 1'b1;	// indicate that we're being stalled by wrong half.
 		end
 		READH_0: begin //read first byte (higher byte)
 			if (sd_busy == 1'b0) //busy going low signals end of block, read next block

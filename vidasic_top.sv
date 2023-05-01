@@ -23,6 +23,7 @@ module vidasic_top (
 	output logic [3:0] hex_out_1,
 	output logic [3:0] hex_out_0
 );
+parameter YUV_STALLCYCLES = 6'h18;
 
 logic [24:0]    READ_ADDR, READ_ADDR_NEXT;  // current address of read from buffer.
 logic [15:0]    READ_WORD;  // word to load into queue
@@ -320,6 +321,7 @@ logic [5:0] saved_TCOEFF_zigzag, next_TCOEFF_zigzag;
 logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
 logic [3:0] playback_type_next, playback_type; // Keep track of the type of playback
 // logic [7:0] SRAM_WRDATA, SRAM_WRDATA_next;   // the input should already be buffered... sus.
+logic [5:0] stalltime, stalltime_next;  // Stall some time - we're playing too fast and not letting writes interleave.
 
 assign hex_out_0 = playback_type;
 
@@ -345,6 +347,7 @@ always_ff @( posedge clk50 or posedge reset ) begin
         U_raster_order_counter <= 16'h0;
         YUVwrite_U_x <= 8'h0;
         YUVwrite_U_y <= 8'h0;
+        stalltime <= 5'h0;
     end
     else if (Q_RDY & run) begin   // Only run if the queue is ready-to-go!
         if(next_TCOEFF_table_WREN)
@@ -366,6 +369,7 @@ always_ff @( posedge clk50 or posedge reset ) begin
         U_raster_order_counter <= U_raster_order_counter_next;
         YUVwrite_U_x <= YUVwrite_U_x_next;
         YUVwrite_U_y <= YUVwrite_U_y_next;
+        stalltime <= stalltime_next;
     end
 end
 
@@ -409,6 +413,7 @@ always_comb begin
     ASIC_Y_WRDATA = 16'h0;
     ASIC_Cb_WRDATA = 16'h0;
     ASIC_Cr_WRDATA = 16'h0;
+    stalltime_next = stalltime;
     case (cur_layer)
         wait_for_it:    // Consider this an ERROR STATE!
             status_2 = 1'b1;
@@ -715,7 +720,7 @@ always_comb begin
                 end
             end
             else begin  // done? ok, onwards to Y decode
-                if (next_frame) // This holds us at 30FPS. Should allow SDcard to load.
+                if (next_frame_15fps) // This holds us at 15fps. Should allow SDcard to load.
                     next_layer = YUV4FRAME_Y;
                 Y_raster_order_counter_next = 16'h0;
             end
@@ -724,6 +729,7 @@ always_comb begin
             ASIC_Y_WRDATA = BITQUEUE[47:40];    // load the value to memory
             ASIC_Y_WREN = 1'b1; // ask for that write
             countdown_next = 6'h8;  // Skip the value once written.
+            stalltime_next = YUV_STALLCYCLES;  // Stall
             next_layer = YUV4FRAME_Y_skip;
         end
         YUV4FRAME_Y_skip : begin
@@ -735,6 +741,9 @@ always_comb begin
                 else begin
                     shiftsig_next = 1'b1;
                 end
+            end
+            else if (stalltime > 0) begin   // try to let the writes interleave a bit
+                stalltime_next = (stalltime - 1);
             end
             else  begin
                 YUVwrite_Y_x_next = YUVwrite_Y_x + 1;
@@ -760,6 +769,7 @@ always_comb begin
             ASIC_Cb_ADDR = ASIC_U_ADDR;
             ASIC_Cb_WREN = 1'b1;
             countdown_next = 6'h8;
+            stalltime_next = YUV_STALLCYCLES;  // Stall 
             next_layer = YUV4FRAME_U_skip;
         end
         YUV4FRAME_U_skip : begin
@@ -771,6 +781,9 @@ always_comb begin
                 else begin
                     shiftsig_next = 1'b1;
                 end
+            end
+            else if (stalltime > 0) begin   // try to let the writes interleave a bit
+                stalltime_next = (stalltime - 1);
             end
             else  begin
                 YUVwrite_U_x_next = YUVwrite_U_x + 1;
@@ -795,6 +808,7 @@ always_comb begin
             ASIC_Cr_ADDR = ASIC_U_ADDR;
             ASIC_Cr_WREN = 1'b1;
             countdown_next = 6'h8;
+            stalltime_next = YUV_STALLCYCLES;  // Stall
             next_layer = YUV4FRAME_V_skip;
         end
         YUV4FRAME_V_skip : begin
@@ -806,6 +820,9 @@ always_comb begin
                 else begin
                     shiftsig_next = 1'b1;
                 end
+            end
+            else if (stalltime > 0) begin   // try to let the writes interleave a bit
+                stalltime_next = (stalltime - 1);
             end
             else  begin
                 YUVwrite_U_x_next = YUVwrite_U_x + 1;
@@ -1638,22 +1655,40 @@ end
                         .DrawY(vga_y)
     );
 
-    logic NTSC_clk, NTSC_prev;
-    logic next_frame;
-    always_ff @ (negedge vsync or posedge reset) begin
-        if (reset)
-            NTSC_clk <= 1'b0;
-		else 
-            NTSC_clk <= ~NTSC_clk;
-    end
-    always_ff @ (posedge clk50 or posedge reset) begin
+    // logic NTSC_clk, NTSC_prev;
+    logic next_frame_15fps;
+    // logic next_frame_NTSC;
+    logic [20:0] counter_15fps, counter_15fps_next;
+    // always_ff @ (negedge vsync or posedge reset) begin
+    //     if (reset)
+    //         NTSC_clk <= 1'b0;
+	// 	else 
+    //         NTSC_clk <= ~NTSC_clk;
+    // end
+    always_ff @ (posedge vga_clk or posedge reset) begin  // 25mhz clk
         if (reset) begin
-            NTSC_prev <= 1'b0;
+            // NTSC_prev <= 1'b0;
+            counter_15fps <= 21'h0;
         end
         else
-            NTSC_prev <= NTSC_clk;
+            counter_15fps <= counter_15fps_next;
+            // NTSC_prev <= NTSC_clk;
     end
-    assign next_frame = ((~NTSC_clk) && (NTSC_prev));   // A quick pulse, every now and then.
+    always_comb begin   // 2 cycles of assert just to be sure
+        if (counter_15fps >= 21'd1666666) begin
+            counter_15fps_next = 21'h0;
+            next_frame_15fps = 1'b1;
+        end
+        // else if(counter_15fps >= 21'd1666665) begin
+        //     counter_15fps_next = counter_15fps + 21'h1;
+        //     next_frame_15fps = 1'b1;
+        // end
+        else begin
+            counter_15fps_next = counter_15fps + 21'h1;
+            next_frame_15fps = 1'b0;
+        end
+    end
+    // assign next_frame_NTSC = ((~NTSC_clk) && (NTSC_prev));   // A quick pulse, every now and then.
 
     logic signed [8:0] calc_red, calc_green, calc_blue;
 
