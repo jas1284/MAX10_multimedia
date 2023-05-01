@@ -720,7 +720,7 @@ always_comb begin
                 end
             end
             else begin  // done? ok, onwards to Y decode
-                if (next_frame_15fps) // This holds us at 15fps. Should allow SDcard to load.
+                if (next_frame_24fps) // This holds us at 24fps. Should allow SDcard to load.
                     next_layer = YUV4FRAME_Y;
                 Y_raster_order_counter_next = 16'h0;
             end
@@ -1656,9 +1656,9 @@ end
     );
 
     // logic NTSC_clk, NTSC_prev;
-    logic next_frame_15fps;
+    logic next_frame_24fps;
     // logic next_frame_NTSC;
-    logic [20:0] counter_15fps, counter_15fps_next;
+    logic [20:0] counter_24fps, counter_24fps_next;
     // always_ff @ (negedge vsync or posedge reset) begin
     //     if (reset)
     //         NTSC_clk <= 1'b0;
@@ -1668,24 +1668,24 @@ end
     always_ff @ (posedge vga_clk or posedge reset) begin  // 25mhz clk
         if (reset) begin
             // NTSC_prev <= 1'b0;
-            counter_15fps <= 21'h0;
+            counter_24fps <= 21'h0;
         end
         else
-            counter_15fps <= counter_15fps_next;
+            counter_24fps <= counter_24fps_next;
             // NTSC_prev <= NTSC_clk;
     end
     always_comb begin   // 2 cycles of assert just to be sure
-        if (counter_15fps >= 21'd1666666) begin
-            counter_15fps_next = 21'h0;
-            next_frame_15fps = 1'b1;
+        if (counter_24fps >= 21'd1041666) begin
+            counter_24fps_next = 21'h0;
+            next_frame_24fps = 1'b1;
         end
-        // else if(counter_15fps >= 21'd1666665) begin
-        //     counter_15fps_next = counter_15fps + 21'h1;
-        //     next_frame_15fps = 1'b1;
+        // else if(counter_24fps >= 21'd1666665) begin
+        //     counter_24fps_next = counter_24fps + 21'h1;
+        //     next_frame_24fps = 1'b1;
         // end
         else begin
-            counter_15fps_next = counter_15fps + 21'h1;
-            next_frame_15fps = 1'b0;
+            counter_24fps_next = counter_24fps + 21'h1;
+            next_frame_24fps = 1'b0;
         end
     end
     // assign next_frame_NTSC = ((~NTSC_clk) && (NTSC_prev));   // A quick pulse, every now and then.
