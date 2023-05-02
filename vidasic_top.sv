@@ -24,6 +24,9 @@ module vidasic_top (
 	output logic [3:0] hex_out_0
 );
 parameter YUV_STALLCYCLES = 6'h18;
+// NOTE: WHEN PLAYING Y4M FILES, MAKE SURE "F" OF FIRST "FRAME" IS AT 0x59. 
+// FOR SOME BLOODY REASON, IF THIS CONDITION ISN'T MET, THE PING-PONG BUFFER
+// WILL BE TOO SLOW TO REPLENISH.
 
 logic [24:0]    READ_ADDR, READ_ADDR_NEXT;  // current address of read from buffer.
 logic [15:0]    READ_WORD;  // word to load into queue
@@ -733,7 +736,7 @@ always_comb begin : decode_FSM_comb;
             YUVwrite_Cb_ADDR = YUVwrite_U_ADDR;
             YUVwrite_Cb_WREN = 1'b1;
             countdown_next = 7'h8;
-            stalltime_next = YUV_STALLCYCLES;  // Stall 
+            stalltime_next = YUV_STALLCYCLES;  // Stall 24 cycles..?
             next_layer = YUV4FRAME_U_skip;
         end
         YUV4FRAME_U_skip : begin
