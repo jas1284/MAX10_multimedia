@@ -253,7 +253,7 @@ module player_toplevel (
 	 
 	// assign LEDR[8] = RAM_INIT_DONE_SIG;
 	logic WRITE_OVERRIDE_STATE;
-	assign LEDR[8] = WRITE_OVERRIDE_STATE;
+	// assign LEDR[8] = WRITE_OVERRIDE_STATE;
 	always_ff @ (posedge MAX10_CLK1_50 or posedge Reset_h) begin
 		if (Reset_h) begin
 			WRITE_OVERRIDE_STATE <= 1;
@@ -298,7 +298,8 @@ module player_toplevel (
 			.ram_data(SD_MODULE_DATA),
 			.ram_op_begun(SD_MODULE_ACK),   //acknowledge from RAM to move to next word
 			.ram_status_light(),
-			.ram_init_error(LEDR[9]), //error initializing
+			.ram_init_error(LEDR[9]), 	// error initializing or paused
+			.ram_init_paused(LEDR[8]),	// paused for reason of finished loading the half (no big deal)
 			.ram_init_done(RAM_INIT_DONE_SIG),  //done with reading all MAX_RAM_ADDRESS words
 			.ram_init_half(RAM_INIT_HALF),
 			.cs_bo(SPI0_CS_N), //SD card pins (also make sure to disable USB CS if using DE10-Lite)

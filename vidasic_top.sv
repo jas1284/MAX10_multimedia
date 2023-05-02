@@ -746,10 +746,10 @@ always_comb begin
                 stalltime_next = (stalltime - 1);
             end
             else  begin
-                YUVwrite_Y_x_next = YUVwrite_Y_x + 1;
+                YUVwrite_Y_x_next = YUVwrite_Y_x + 9'h1;
                 if(YUVwrite_Y_x_next >= 176) begin
                     YUVwrite_Y_x_next = 8'h0;
-                    YUVwrite_Y_y_next = YUVwrite_Y_y + 1;
+                    YUVwrite_Y_y_next = YUVwrite_Y_y + 9'h1;
                 end
                 if(Y_raster_order_counter >= 16'h62FF) begin   // 176*144 - 1
                     Y_raster_order_counter_next = 16'h0;    // reset the counter
@@ -786,10 +786,10 @@ always_comb begin
                 stalltime_next = (stalltime - 1);
             end
             else  begin
-                YUVwrite_U_x_next = YUVwrite_U_x + 1;
+                YUVwrite_U_x_next = YUVwrite_U_x + 9'h1;
                 if(YUVwrite_U_x_next >= 88) begin
                     YUVwrite_U_x_next = 8'h0;
-                    YUVwrite_U_y_next = YUVwrite_U_y + 1;
+                    YUVwrite_U_y_next = YUVwrite_U_y + 9'h1;
                 end
                 if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
                     U_raster_order_counter_next = 16'h0;    // reset the counter
@@ -825,10 +825,10 @@ always_comb begin
                 stalltime_next = (stalltime - 1);
             end
             else  begin
-                YUVwrite_U_x_next = YUVwrite_U_x + 1;
+                YUVwrite_U_x_next = YUVwrite_U_x + 9'h1;
                 if(YUVwrite_U_x_next >= 88) begin
                     YUVwrite_U_x_next = 8'h0;
-                    YUVwrite_U_y_next = YUVwrite_U_y + 1;
+                    YUVwrite_U_y_next = YUVwrite_U_y + 9'h1;
                 end
                 if(U_raster_order_counter >= 16'h18BF) begin   // 88*72 - 1
                     U_raster_order_counter_next = 16'h0;    // reset the counter
