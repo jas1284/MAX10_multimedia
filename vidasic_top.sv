@@ -57,20 +57,8 @@ assign hex_out_4 = BITQUEUE[43:40];
 assign hex_out_3 = BITQUEUE[39:36];
 assign hex_out_2 = BITQUEUE[35:32];
 assign hex_out_1 = BITQUEUE[31:28];
-// assign hex_out_0 = BITQUEUE[27:24];
 
-// logic slowclk;
-
-// always_ff @ (posedge clk50 or posedge reset)
-// begin
-//     if(reset)
-//         slowclk <= 1'b0;
-//     else
-//         slowclk <= ~slowclk;
-// end
-
-always_ff @ (posedge clk50 or posedge reset)
-begin
+always_ff @ (posedge clk50 or posedge reset) begin : bitqueue_ff;
     if(reset)
     begin
         BITQUEUE <= 48'h0;
@@ -87,47 +75,44 @@ begin
     end
 end
 
-	// Ram readback buffering mechanism - makes sure we don't miss data.
-	always_ff @ (posedge clk50 or posedge reset)
-	begin
-		if(reset)
-		begin
-			// RAM_DATA_RDEN <= 1'b0;
-			RAM_BUFFERED_READBACK <= 16'h0;
-			RAM_DATA_BUFFER_STATE <= 1'b0;  // state: inactive
-		end
-		else if(RAM_DATA_BUFFER_STATE)  // If active state...
-		begin
-			// RAM_DATA_RDEN <= 1'b1;
-			if(ram_ack) begin
-				RAM_BUFFERED_READBACK <= ram_data;
-				RAM_DATA_BUFFER_STATE <= 1'b0; // go back to inactive/unarmed state.
-			end
-		end
-		else	// Inactive state
-			// RAM_DATA_RDEN <= 1'b0;
-			RAM_DATA_BUFFER_STATE <= RAM_DATA_BUFFER_EN;    // Wait to be activated.
-	end
+// Ram readback buffering mechanism - makes sure we don't miss data.
+always_ff @ (posedge clk50 or posedge reset) begin : rambuffer_ff;
 
-	logic RDEN_override;
-	// assign RAM_DATA_RDEN = RAM_DATA_BUFFER_STATE;
-	assign ram_rden = (RAM_DATA_BUFFER_STATE |RDEN_override);
+    if(reset)
+    begin
+        // RAM_DATA_RDEN <= 1'b0;
+        RAM_BUFFERED_READBACK <= 16'h0;
+        RAM_DATA_BUFFER_STATE <= 1'b0;  // state: inactive
+    end
+    else if(RAM_DATA_BUFFER_STATE)  // If active state...
+    begin
+        // RAM_DATA_RDEN <= 1'b1;
+        if(ram_ack) begin
+            RAM_BUFFERED_READBACK <= ram_data;
+            RAM_DATA_BUFFER_STATE <= 1'b0; // go back to inactive/unarmed state.
+        end
+    end
+    else	// Inactive state
+        // RAM_DATA_RDEN <= 1'b0;
+        RAM_DATA_BUFFER_STATE <= RAM_DATA_BUFFER_EN;    // Wait to be activated.
+end
 
-always_comb 
-begin
+logic RDEN_override;
+// assign RAM_DATA_RDEN = RAM_DATA_BUFFER_STATE;
+assign ram_rden = (RAM_DATA_BUFFER_STATE |RDEN_override);
+
+always_comb begin : bitqueue_comb;
     // default values: 
     BITQ_NEXT = BITQUEUE;       // queue doesnt move
     READ_ADDR_NEXT = READ_ADDR; // addr doesnt change
     SHIFTCOUNT_NEXT = SHIFTCOUNT;   // shift-counter stays
     ram_addr = READ_ADDR;       // Pre-set the ram address
-//    ram_rden = 1'b0; 
     RDEN_override = 1'b0; 
     q_nextstate = queue_state;  // stay in current state
     status_1 = 1'b0;    // lights - blank em 
     // status_2 = 1'b0;
     Q_RDY = 1'b0;   // Assume the queue's NOT READY unless otherwise stated.
     RAM_DATA_BUFFER_EN = 1'b0;  // Ram buffering mechanism assumes no incoming data.
-
 
     case (queue_state)
         q_shift: begin
@@ -142,19 +127,7 @@ begin
             begin
                 q_nextstate = q_shift;              // TESTING PURPOSE!
                 BITQ_NEXT = BITQUEUE << 1;          // shift the bitqueue, should be 1, 4 to test
-                SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;   // shift count increments, should be 1 (4 to test)
-                // if (SHIFTCOUNT_NEXT >= 16) begin
-                //     ram_rden = 1'b1;        // Call upon RAM to send data.
-                //     // ram_addr = READ_ADDR;
-                //     if(RAM_DATA_BUFFER_STATE == 1'b0) begin // If the buffer has disarmed, it must have caught data
-                //         // q_nextstate = q_shift;  // we should be clear to return to normal operation.
-                //         ram_rden = 1'b0;    // let the RAM rest
-                //         BITQ_NEXT[15:8] = RAM_BUFFERED_READBACK[7:0];    // little-vs-big-endian tomfoolery
-                //         BITQ_NEXT[7:0] = RAM_BUFFERED_READBACK[15:8];
-                //         READ_ADDR_NEXT = READ_ADDR + 1;     // increment to next ram addr for next time.
-                //         SHIFTCOUNT_NEXT = 6'h0;    // reset the shift-count
-                //     end
-                // end
+                SHIFTCOUNT_NEXT = SHIFTCOUNT + 6'h1;   // shift count increments, should be 1 (4 to test)
                 if(SHIFTCOUNT_NEXT >= 1) begin     // Note that since we're in a COMB thus must use shiftcount_next!
                     q_nextstate = q_prefetch;  // we need to top up the queue. 
                     // ram_rden = 1'b1;        // Call upon RAM to send data.
@@ -181,7 +154,7 @@ begin
             begin
                 q_nextstate = q_prefetch;              // TESTING PURPOSE!
                 BITQ_NEXT = BITQUEUE << 1;          // shift the bitqueue, should be 1, 4 to test
-                SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;   // shift count increments, should be 1 (4 to test)
+                SHIFTCOUNT_NEXT = SHIFTCOUNT + 6'h1;   // shift count increments, should be 1 (4 to test)
                 if(SHIFTCOUNT_NEXT >= 16) begin // If the buffer has disarmed, it must have caught data
                     q_nextstate = q_shift;  // we should be clear to return to normal operation.
                     // ram_rden = 1'b0;    // let the RAM rest
@@ -193,17 +166,6 @@ begin
             end
 
         end
-        // q_prefetch  :   // should be just like normal, but also sends out rden/addr
-        // begin
-        //     ram_rden = 1'b1;
-        //     ram_addr = READ_ADDR;
-        //     BITQ_NEXT = BITQUEUE << 1;  // shift the bitqueue
-        //     SHIFTCOUNT_NEXT = SHIFTCOUNT + 1;
-        //     if(SHIFTCOUNT >= 16) begin   // little early for prefetch on 50mhz, but dont bother by hand
-        //         q_nextstate = q_load1;
-        //         SHIFTCOUNT_NEXT = 0;
-        //     end
-        // end
         q_load1 : begin // load 1st word - most common
             // ram_rden = 1'b1;        // Call upon RAM to send data.
             // ram_addr = READ_ADDR;
@@ -306,7 +268,7 @@ enum logic [10:0]
     YUV4FRAME_Y,
     YUV4FRAME_Y_skip
 }   cur_layer, next_layer;
-logic [5:0] countdown, countdown_next;
+logic unsigned [6:0] countdown, countdown_next;
 logic shiftsig, shiftsig_next;
 logic [4:0] saved_TR, next_TR;
 logic [3:0] saved_GN, next_GN;
@@ -326,7 +288,7 @@ logic [5:0] stalltime, stalltime_next;  // Stall some time - we're playing too f
 assign hex_out_0 = playback_type;
 
 // FF Logic for the big-bloody-state-machine!
-always_ff @( posedge clk50 or posedge reset ) begin
+always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
     if(reset) begin
         for(int i = 0; i < 64; i++)
             saved_TCOEFF_table[i] <= 8'b0;
@@ -340,6 +302,7 @@ always_ff @( posedge clk50 or posedge reset ) begin
         saved_TR <= 5'h0;
         cur_layer <= piclayer_readPSC;  // first thing is to always read PSC.
         countdown <= 6'h0;
+
         playback_type <= 4'h0;
         Y_raster_order_counter <= 16'h0;
         YUVwrite_Y_x <= 8'h0;
@@ -362,6 +325,7 @@ always_ff @( posedge clk50 or posedge reset ) begin
         saved_TR <= next_TR;
         cur_layer <= next_layer;
         countdown <= countdown_next;
+
         playback_type <= playback_type_next;
         Y_raster_order_counter <= Y_raster_order_counter_next;
         YUVwrite_Y_x <= YUVwrite_Y_x_next;
@@ -381,7 +345,7 @@ always_ff @(posedge clk50 or posedge reset) begin
         shiftsig <= shiftsig_next;
 end
 
-always_comb begin
+always_comb begin : decode_FSM_comb;
     // default values... part of the 2-always M.O.
     status_2 = 1'b0;
     next_layer = cur_layer;
@@ -395,7 +359,7 @@ always_comb begin
     // next_TCOEFF_count = saved_TCOEFF_count;
     next_block_layer = saved_block_layer;
     next_TCOEFF_zigzag = saved_TCOEFF_zigzag;
-    next_TCOEFF_table_WREN = 0; // don't write to TCOEFF TABLE unless AUTHORIZED !
+    next_TCOEFF_table_WREN = 1'b0; // don't write to TCOEFF TABLE unless AUTHORIZED !
     next_TCOEFF_table_entry = 0;
 
     playback_type_next = playback_type;
@@ -405,14 +369,14 @@ always_comb begin
     U_raster_order_counter_next = U_raster_order_counter;
     YUVwrite_U_x_next = YUVwrite_U_x;
     YUVwrite_U_y_next = YUVwrite_U_y;
-    ASIC_Cb_ADDR = 13'h0;
-    ASIC_Cr_ADDR = 13'h0;
-    ASIC_Y_WREN = 1'b0;
-    ASIC_Cb_WREN = 1'b0;
-    ASIC_Cr_WREN = 1'b0;
-    ASIC_Y_WRDATA = 16'h0;
-    ASIC_Cb_WRDATA = 16'h0;
-    ASIC_Cr_WRDATA = 16'h0;
+    YUVwrite_Cb_ADDR = 13'h0;
+    YUVwrite_Cr_ADDR = 13'h0;
+    YUVwrite_Y_WREN = 1'b0;
+    YUVwrite_Cb_WREN = 1'b0;
+    YUVwrite_Cr_WREN = 1'b0;
+    YUVwrite_Y_WRDATA = 16'h0;
+    YUVwrite_Cb_WRDATA = 16'h0;
+    YUVwrite_Cr_WRDATA = 16'h0;
     stalltime_next = stalltime;
     case (cur_layer)
         wait_for_it:    // Consider this an ERROR STATE!
@@ -420,7 +384,7 @@ always_comb begin
         piclayer_readPSC : begin
             if(PSC) begin
                 playback_type_next = 4'h1;   // 1 for "h.261"
-                countdown_next = 6'd20;
+                countdown_next = 7'd20;
                 next_layer = piclayer_skipPSC;
             end
             else // we SHOULD see a PSC, or something screwed up!
@@ -441,7 +405,7 @@ always_comb begin
         end
         piclayer_readTR : begin
             next_TR = TR;
-            countdown_next = 6'd5;
+            countdown_next = 7'd5;
             next_layer = piclayer_skipTR;
         end
         piclayer_skipTR : begin
@@ -459,7 +423,7 @@ always_comb begin
         end
         piclayer_readPTYPE : begin
             if(PTYPE) begin
-                countdown_next = 6'd7;  // PTYPE is only 6, but we'll also skip PEI.
+                countdown_next = 7'd7;  // PTYPE is only 6, but we'll also skip PEI.
                 next_layer = piclayer_skipPTYPE;
             end
             else 
@@ -480,7 +444,7 @@ always_comb begin
         end
         piclayer_readGBSC : begin
             if(GBSC) begin
-                countdown_next = 6'd16;
+                countdown_next = 7'd16;
                 next_layer = piclayer_skipGBSC;
             end
             else // we SHOULD see a GBSC, or something screwed up! (PEI was set)
@@ -501,7 +465,7 @@ always_comb begin
         end
         piclayer_readGN : begin
             next_GN = GN;
-            countdown_next = 6'd4;
+            countdown_next = 7'd4;
             next_layer = piclayer_skipGN;
         end
         piclayer_skipGN : begin
@@ -519,7 +483,7 @@ always_comb begin
         end
         piclayer_readGQUANT : begin
             next_QUANT = GQUANT;
-            countdown_next = 6'd6;  // Skip 5 + GEI.
+            countdown_next = 7'd6;  // Skip 5 + GEI.
             next_layer = piclayer_skipGQUANT;
         end
         piclayer_skipGQUANT : begin
@@ -625,7 +589,7 @@ always_comb begin
                 endcase
                 next_TCOEFF_zigzag = saved_TCOEFF_zigzag + BITQUEUE[41:36] + 1; // RUN
                 next_TCOEFF_table_WREN = 1'b1;
-                countdown_next = 20;    // Skip everything since we just did the whole ass FLC
+                countdown_next = 7'd20;    // Skip everything since we just did the whole ass FLC
             end 
             else begin  // Not end, nor FLC, so interpret using the VLC table
                 case (saved_QUANT[0])
@@ -688,11 +652,11 @@ always_comb begin
         end
         YUV4FRAME : begin
             if (BITQUEUE[47:16] == 32'h4652414D) begin  // = "FRAM"
-                countdown_next = 6'h48; // skip to beginning of first frame
+                countdown_next = 7'd48; // skip to beginning of first frame (48 bits, 6 bytes)
                 next_layer = YUV4FRAME_skip;
             end
             else begin
-                countdown_next = 6'h8;  // skip 8 bits (1 char) and try again
+                countdown_next = 7'h8;  // skip 8 bits (1 char) and try again
                 next_layer = YUV4FRAME_search_skip;
             end
         end
@@ -726,9 +690,9 @@ always_comb begin
             end
         end
         YUV4FRAME_Y : begin
-            ASIC_Y_WRDATA = BITQUEUE[47:40];    // load the value to memory
-            ASIC_Y_WREN = 1'b1; // ask for that write
-            countdown_next = 6'h8;  // Skip the value once written.
+            YUVwrite_Y_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            YUVwrite_Y_WREN = 1'b1; // ask for that write
+            countdown_next = 7'h8;  // Skip the value once written.
             stalltime_next = YUV_STALLCYCLES;  // Stall
             next_layer = YUV4FRAME_Y_skip;
         end
@@ -765,10 +729,10 @@ always_comb begin
             end
         end
         YUV4FRAME_U : begin
-            ASIC_Cb_WRDATA = BITQUEUE[47:40];    // load the value to memory
-            ASIC_Cb_ADDR = ASIC_U_ADDR;
-            ASIC_Cb_WREN = 1'b1;
-            countdown_next = 6'h8;
+            YUVwrite_Cb_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            YUVwrite_Cb_ADDR = YUVwrite_U_ADDR;
+            YUVwrite_Cb_WREN = 1'b1;
+            countdown_next = 7'h8;
             stalltime_next = YUV_STALLCYCLES;  // Stall 
             next_layer = YUV4FRAME_U_skip;
         end
@@ -804,10 +768,10 @@ always_comb begin
             end
         end
         YUV4FRAME_V : begin
-            ASIC_Cr_WRDATA = BITQUEUE[47:40];    // load the value to memory
-            ASIC_Cr_ADDR = ASIC_U_ADDR;
-            ASIC_Cr_WREN = 1'b1;
-            countdown_next = 6'h8;
+            YUVwrite_Cr_WRDATA = BITQUEUE[47:40];    // load the value to memory
+            YUVwrite_Cr_ADDR = YUVwrite_U_ADDR;
+            YUVwrite_Cr_WREN = 1'b1;
+            countdown_next = 7'h8;
             stalltime_next = YUV_STALLCYCLES;  // Stall
             next_layer = YUV4FRAME_V_skip;
         end
@@ -853,6 +817,7 @@ end
     logic [4:0]  YUVwrite_Y_MB_row,  YUVwrite_Y_MB_col; // x and y values of the macroblock... necessary for computing block raster and index.
     logic [7:0]  Y_raster_order_MB; // which macroblock, in raster-order.
     logic [14:0] YUVwrite_Y_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
+    logic [14:0] YUVwrite_Y_ADDR;   // Address for YUV Y vals. selectable.
     // logic [7:0] YUVwrite_Y_sub;
     logic [3:0] YUVwrite_Y_MB_internal_col, YUVwrite_Y_MB_internal_row; // calculated rows and cols inside the macroblocks
 
@@ -865,30 +830,91 @@ end
         YUVwrite_Y_MB_offset = ((YUVwrite_Y_MB_row* 11) << 8) + (YUVwrite_Y_MB_col << 8);
         YUVwrite_Y_MB_internal_col = YUVwrite_Y_x[3:0];
         YUVwrite_Y_MB_internal_row = YUVwrite_Y_y[3:0];
-        ASIC_Y_ADDR = YUVwrite_Y_MB_offset + (YUVwrite_Y_MB_internal_row << 4) + YUVwrite_Y_MB_internal_col;
+        YUVwrite_Y_ADDR = YUVwrite_Y_MB_offset + (YUVwrite_Y_MB_internal_row << 4) + YUVwrite_Y_MB_internal_col;
     end
 
     // YUV output calculation for this crap
-    logic [12:0] ASIC_U_ADDR;
     logic [15:0] U_raster_order_counter, U_raster_order_counter_next;   // which pixel, in raster-order.
     logic [8:0] YUVwrite_U_x, YUVwrite_U_y; // x and y values, scaled to be 176x144. 
     logic [8:0] YUVwrite_U_x_next, YUVwrite_U_y_next; // x and y values, scaled to be 88x72. 
     logic [4:0]  YUVwrite_U_MB_row,  YUVwrite_U_MB_col; // x and y values of the macroblock... necessary for computing block raster and index.
     logic [7:0]  U_raster_order_MB; // which macroblock, in raster-order.
-    logic [14:0] YUVwrite_U_MB_offset;  // Offset in memory to get to the right Y macroblock (16x16)
+    logic [12:0] YUVwrite_U_MB_offset;  // Offset in memory to get to the right U macroblock (8x8)
+    logic [12:0] YUVwrite_U_ADDR;   // Address for YUV U vals. selectable.
     // logic [7:0] YUVwrite_U_sub;
     logic [2:0] YUVwrite_U_MB_internal_col, YUVwrite_U_MB_internal_row; // calculated rows and cols inside the macroblocks
 
     always_comb begin    // scale down by 3x;
         // Macroblocks are in raster-order, with the pixels within each macroblock in raster-order.
         // YUVwrite_U_x = U_raster_order_counter % 88;
-        // YUVwrite_U_y = U_raster_order_counter / 88;
+        // YUVwrite_U_y = U_raster_order_counter / 88;  // These were too intensive to hit timing!
         YUVwrite_U_MB_col = YUVwrite_U_x >> 3;
         YUVwrite_U_MB_row = YUVwrite_U_y >> 3;
         YUVwrite_U_MB_offset = ((YUVwrite_U_MB_row* 11) << 6) + (YUVwrite_U_MB_col << 6);
         YUVwrite_U_MB_internal_col = YUVwrite_U_x[2:0];
         YUVwrite_U_MB_internal_row = YUVwrite_U_y[2:0];
-        ASIC_U_ADDR = YUVwrite_U_MB_offset + (YUVwrite_U_MB_internal_row << 3) + YUVwrite_U_MB_internal_col;
+        YUVwrite_U_ADDR = YUVwrite_U_MB_offset + (YUVwrite_U_MB_internal_row << 3) + YUVwrite_U_MB_internal_col;
+    end
+
+    logic [14:0] H261_Y_ADDR;
+    logic [7:0] H261_Y_WRDATA, YUVwrite_Y_WRDATA;
+    logic [7:0] H261_Y_RDDATA;   // as-of-yet-unused
+    logic H261_Y_WREN, YUVwrite_Y_WREN;
+    logic H261_Y_RDEN; // as-of-yet-unused
+
+    logic [12:0] H261_Cb_ADDR, H261_Cr_ADDR, YUVwrite_Cb_ADDR, YUVwrite_Cr_ADDR;
+    logic [7:0] H261_Cb_WRDATA, H261_Cr_WRDATA, YUVwrite_Cb_WRDATA, YUVwrite_Cr_WRDATA;
+    logic [7:0] H261_Cb_RDDATA, H261_Cr_RDDATA;   // as-of-yet-unused
+    logic H261_Cb_WREN, H261_Cr_WREN, YUVwrite_Cb_WREN, YUVwrite_Cr_WREN;
+    logic H261_Cb_RDEN, H261_Cr_RDEN; // as-of-yet-unused
+    always_comb begin : FrameBufferAccessSelector;
+        ASIC_Y_ADDR = 15'h0;
+        ASIC_Y_WRDATA = 8'h0;
+        ASIC_Y_WREN = 1'b0;
+        ASIC_Y_RDEN = 1'b0;
+        ASIC_Cb_ADDR = 13'h0;
+        ASIC_Cb_WRDATA = 8'h0;
+        ASIC_Cb_WREN = 1'b0;
+        ASIC_Cb_RDEN = 1'b0;
+        ASIC_Cr_ADDR = 13'h0;
+        ASIC_Cr_WRDATA = 8'h0;
+        ASIC_Cr_WREN = 1'b0;
+        ASIC_Cr_RDEN = 1'b0;
+        
+        H261_Y_RDDATA = 8'h0;
+        H261_Cb_RDDATA = 8'h0;
+        H261_Cr_RDDATA = 8'h0;
+        case (playback_type)
+            4'h1 : begin    // H261
+                ASIC_Y_ADDR = H261_Y_ADDR;
+                ASIC_Y_WRDATA = H261_Y_WRDATA;
+                H261_Y_RDDATA = ASIC_Y_RDDATA;
+                ASIC_Y_WREN = H261_Y_WREN;
+                ASIC_Y_RDEN = H261_Y_RDEN;
+                ASIC_Cb_ADDR = H261_Cb_ADDR;
+                ASIC_Cb_WRDATA = H261_Cb_WRDATA;
+                H261_Cb_RDDATA = ASIC_Cb_RDDATA;
+                ASIC_Cb_WREN = H261_Cb_WREN;
+                ASIC_Cb_RDEN = H261_Cb_RDEN;
+                ASIC_Cr_ADDR = H261_Cr_ADDR;
+                ASIC_Cr_WRDATA = H261_Cr_WRDATA;
+                H261_Cr_RDDATA = ASIC_Cr_RDDATA;
+                ASIC_Cr_WREN = H261_Cr_WREN;
+                ASIC_Cr_RDEN = H261_Cr_RDEN;
+            end
+            4'h4 : begin    // YUV4
+                ASIC_Y_ADDR = YUVwrite_Y_ADDR;
+                ASIC_Y_WRDATA = YUVwrite_Y_WRDATA;
+                ASIC_Y_WREN = YUVwrite_Y_WREN;
+                ASIC_Cb_ADDR = YUVwrite_Cb_ADDR;
+                ASIC_Cb_WRDATA = YUVwrite_Cb_WRDATA;
+                ASIC_Cb_WREN = YUVwrite_Cb_WREN;
+                ASIC_Cr_ADDR = YUVwrite_Cr_ADDR;
+                ASIC_Cr_WRDATA = YUVwrite_Cr_WRDATA;
+                ASIC_Cr_WREN = YUVwrite_Cr_WREN;
+            end
+            default: ;
+        endcase
     end
 
 
