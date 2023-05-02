@@ -213,7 +213,7 @@ module player_toplevel (
 	
 	assign {Reset_h}=~ (KEY0_SYNC); 
 
-	assign signs = 2'b00;
+//	assign signs = 2'b00;
 //	assign HEX_NUM_4 = 4'h4;
 //	assign HEX_NUM_3 = 4'h3;
 //	assign HEX_NUM_1 = 4'h1;
