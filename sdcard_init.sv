@@ -29,7 +29,8 @@ module sdcard_init (
 	output logic [3:0] hex_out_2,
 	output logic [3:0] hex_out_1,
 	output logic [3:0] hex_out_0,
-	output logic ram_init_error, //error initializing
+	output logic ram_init_error, 	//error initializing - halted for any reason
+	output logic ram_init_paused,	// we've caught up and paused (means error is benign)
 	output logic ram_init_done,  //done with reading all MAX_RAM_ADDRESS words
 	input  logic ram_init_half,	// continue loading
 	output logic cs_bo, //SD card pins (also make sure to disable USB CS if using DE10-Lite)
@@ -128,6 +129,7 @@ begin
 	data_x = data_r;
 	ram_addr_x = ram_addr_r;
 	ram_init_error = 1'b0;
+	ram_init_paused = 1'b0;
 	ram_init_done = 1'b0;
 	
 	// ram_half_next = ram_half;
@@ -156,6 +158,10 @@ begin
 				if(ram_addr_r >= 36'h7FFFFFFFF)
 					state_x = DONE;
 			end
+			else
+				if(ram_addr_r[22:0] == 23'h0)	// we finished, stalling
+					ram_init_paused = 1'b1;
+				ram_init_error = 1'b1;	// indicate that we're being stalled by wrong half, or got overtaken
 		end
 		READH_0: begin //read first byte (higher byte)
 			if (sd_busy == 1'b0) //busy going low signals end of block, read next block

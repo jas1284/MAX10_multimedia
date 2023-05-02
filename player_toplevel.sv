@@ -67,7 +67,7 @@ module player_toplevel (
 	logic [3:0] HEX_NUM_5_AUD, HEX_NUM_4_AUD, HEX_NUM_3_AUD, HEX_NUM_2_AUD, HEX_NUM_1_AUD, HEX_NUM_0_AUD;
 	logic [3:0] HEX_NUM_5_VID, HEX_NUM_4_VID, HEX_NUM_3_VID, HEX_NUM_2_VID, HEX_NUM_1_VID, HEX_NUM_0_VID;
 	logic [3:0] HEX_NUM_5_LOAD, HEX_NUM_4_LOAD, HEX_NUM_3_LOAD, HEX_NUM_2_LOAD, HEX_NUM_1_LOAD, HEX_NUM_0_LOAD;
-	logic [1:0] signs;
+//	logic [1:0] signs;
 	logic [1:0] hundreds;
 //	logic [7:0] keycode;
 	logic [24:0] SD_MODULE_ADDR, VIDASIC_ADDR, AUDASIC_ADDR;
@@ -113,7 +113,7 @@ module player_toplevel (
 	
 	//generate 12.5MHz CODEC mclk
 	always_ff @(posedge MAX10_CLK1_50) begin
-		aud_mclk_ctr <= aud_mclk_ctr + 1;
+		aud_mclk_ctr <= aud_mclk_ctr + 2'h1;
 	end
 	assign i2c_serial_sda_in = ARDUINO_IO[14];
 	assign i2c_serial_scl_in = ARDUINO_IO[15];
@@ -135,7 +135,7 @@ module player_toplevel (
 	always_comb begin
 		case (SW1_SYNC)
 			1'b1 : ARDUINO_IO[2] = i2s_din;
-			1'b0 : ARDUINO_IO[2] = ARDUINO_IO[1];
+			1'b0 : ARDUINO_IO[2] = i2s_dout;
 			default: ;
 		endcase
 	end
@@ -213,7 +213,7 @@ module player_toplevel (
 	
 	assign {Reset_h}=~ (KEY0_SYNC); 
 
-	assign signs = 2'b00;
+//	assign signs = 2'b00;
 //	assign HEX_NUM_4 = 4'h4;
 //	assign HEX_NUM_3 = 4'h3;
 //	assign HEX_NUM_1 = 4'h1;
@@ -253,7 +253,7 @@ module player_toplevel (
 	 
 	// assign LEDR[8] = RAM_INIT_DONE_SIG;
 	logic WRITE_OVERRIDE_STATE;
-	assign LEDR[8] = WRITE_OVERRIDE_STATE;
+	// assign LEDR[8] = WRITE_OVERRIDE_STATE;
 	always_ff @ (posedge MAX10_CLK1_50 or posedge Reset_h) begin
 		if (Reset_h) begin
 			WRITE_OVERRIDE_STATE <= 1;
@@ -298,7 +298,8 @@ module player_toplevel (
 			.ram_data(SD_MODULE_DATA),
 			.ram_op_begun(SD_MODULE_ACK),   //acknowledge from RAM to move to next word
 			.ram_status_light(),
-			.ram_init_error(LEDR[9]), //error initializing
+			.ram_init_error(LEDR[9]), 	// error initializing or paused
+			.ram_init_paused(LEDR[8]),	// paused for reason of finished loading the half (no big deal)
 			.ram_init_done(RAM_INIT_DONE_SIG),  //done with reading all MAX_RAM_ADDRESS words
 			.ram_init_half(RAM_INIT_HALF),
 			.cs_bo(SPI0_CS_N), //SD card pins (also make sure to disable USB CS if using DE10-Lite)
