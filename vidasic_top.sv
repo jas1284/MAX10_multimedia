@@ -1690,7 +1690,8 @@ end
     end
     // assign next_frame_NTSC = ((~NTSC_clk) && (NTSC_prev));   // A quick pulse, every now and then.
 
-    logic signed [8:0] calc_red, calc_green, calc_blue;
+    logic signed [9:0] calc_red, calc_green, calc_blue;
+    logic [7:0] calc_red_clipped, calc_green_clipped, calc_blue_clipped;
 
     always_ff @( posedge vga_clk or posedge reset ) begin 
         if(reset) begin
@@ -1699,9 +1700,9 @@ end
             blue <= 4'h0;
         end
         else if (vga_blank) begin
-            red <= calc_red[7:4];
-            green <= calc_green[7:4];
-            blue <= calc_blue[7:4];
+            red <= calc_red_clipped[7:4];
+            green <= calc_green_clipped[7:4];
+            blue <= calc_blue_clipped[7:4];
         end
         else begin
             red <= 4'h0;
@@ -1749,16 +1750,44 @@ end
 
 
 
-    always_comb begin
+    always_comb begin : colorcalc
         if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
-            calc_red = 9'sh0;    // Basically zero it out if we're beyond the video box. 
-            calc_green = 9'sh0;
-            calc_blue = 9'sh0;
+            calc_red = 10'sh0;    // Basically zero it out if we're beyond the video box. 
+            calc_green = 10'sh0;
+            calc_blue = 10'sh0;
         end
         else begin  // rounding a lot here... rec.601 to RGB conversion, stolen from wikipedia wiki/YCbCr
             calc_red = ((149 * VGA_Y_RDDATA_minus16) >>> 7) + ((51*VGA_Cr_RDDATA_minus128) >>> 5);
             calc_green = ((149 * VGA_Y_RDDATA_minus16) >>> 7) - ((25 * VGA_Cb_RDDATA_minus128) >>> 6) - ((13*VGA_Cr_RDDATA_minus128) >>> 4);
             calc_blue = ((149 * VGA_Y_RDDATA_minus16) >>> 7) + ((129 * VGA_Cb_RDDATA_minus128) >>> 6);
+        end
+    end
+    always_comb begin : colorclipred
+        if(calc_red > 10'sd255)
+            calc_red_clipped = 8'd255;
+        else if (calc_red < 10'sd0) begin
+            calc_red_clipped = 8'd0;
+        end
+        else begin
+            calc_red_clipped = calc_red[7:0];
+        end
+
+        if(calc_green > 10'sd255)
+            calc_green_clipped = 8'd255;
+        else if (calc_green < 10'sd0) begin
+            calc_green_clipped = 8'd0;
+        end
+        else begin
+            calc_green_clipped = calc_green[7:0];
+        end
+
+        if(calc_blue > 10'sd255)
+            calc_blue_clipped = 8'd255;
+        else if (calc_blue < 10'sd0) begin
+            calc_blue_clipped = 8'd0;
+        end
+        else begin
+            calc_blue_clipped = calc_blue[7:0];
         end
     end
 
