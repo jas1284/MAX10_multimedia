@@ -1,9 +1,21 @@
-06:40:25 **** Incremental Build of configuration Nios II for project SGTL5000_I2C ****
+15:30:42 **** Build of configuration Nios II for project SGTL5000_I2C ****
 make all 
 Info: Building ../SGTL5000_I2C_bsp/
 C:/intelFPGA_lite/18.1/nios2eds/bin/gnu/H-x86_64-mingw32/bin/make --no-print-directory -C ../SGTL5000_I2C_bsp/
-[BSP build complete]
-[SGTL5000_I2C build complete]
+Makefile not up to date.
+settings.bsp has been modified since the BSP Makefile was generated.
 
-06:40:26 Build Finished (took 1s.325ms)
+Generate the BSP to update the Makefile, and then build again.
+
+To generate from Eclipse:
+ 1. Right-click the BSP project.
+ 2. In the Nios II Menu, click Generate BSP.
+
+To generate from the command line:
+ nios2-bsp-generate-files --settings=<settings file> --bsp-dir=<target bsp files directory>
+
+make[1]: *** [makefile] Error 1
+make: *** [../SGTL5000_I2C_bsp/-recurs-make-lib] Error 2
+
+15:30:43 Build Finished (took 1s.85ms)
 

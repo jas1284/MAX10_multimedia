@@ -280,10 +280,14 @@ logic [5:0] saved_MBA, next_MBA;
 logic [3:0] saved_MTYPE_vec, next_MTYPE_vec;
 // logic [5:0] saved_TCOEFF_count, next_TCOEFF_count;
 logic [2:0] saved_block_layer, next_block_layer;
-logic [7:0] saved_TCOEFF_table [64];
-logic [7:0] next_TCOEFF_table_entry;
+logic signed [11:0] saved_TCOEFF_table [64];
+logic signed [11:0] next_TCOEFF_table_entry;
 logic [5:0] saved_TCOEFF_zigzag, next_TCOEFF_zigzag;
 logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
+logic signed [7:0] FLC_level;
+assign FLC_level = BITQUEUE[35:28];
+logic [3:0] idct_cur_block_layer, idct_cur_block_layer_next;
+
 logic [3:0] playback_type_next, playback_type; // Keep track of the type of playback
 // logic [7:0] SRAM_WRDATA, SRAM_WRDATA_next;   // the input should already be buffered... sus.
 logic [5:0] stalltime, stalltime_next;  // Stall some time - we're playing too fast and not letting writes interleave.
@@ -305,6 +309,8 @@ always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
         saved_TR <= 5'h0;
         cur_layer <= piclayer_readPSC;  // first thing is to always read PSC.
         countdown <= 6'h0;
+
+        idct_cur_block_layer <= 3'h0;
 
         playback_type <= 4'h0;
         Y_raster_order_counter <= 16'h0;
@@ -328,6 +334,8 @@ always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
         saved_TR <= next_TR;
         cur_layer <= next_layer;
         countdown <= countdown_next;
+        
+        idct_cur_block_layer <= idct_cur_block_layer_next;
 
         playback_type <= playback_type_next;
         Y_raster_order_counter <= Y_raster_order_counter_next;
@@ -343,7 +351,7 @@ end
 // Need to run the shift signal on a slower clock...? lol oops no we don't
 always_ff @(posedge clk50 or posedge reset) begin
     if(reset)
-        shiftsig <= 0;
+        shiftsig <= 1'b0;
     else 
         shiftsig <= shiftsig_next;
 end
@@ -363,7 +371,10 @@ always_comb begin : decode_FSM_comb;
     next_block_layer = saved_block_layer;
     next_TCOEFF_zigzag = saved_TCOEFF_zigzag;
     next_TCOEFF_table_WREN = 1'b0; // don't write to TCOEFF TABLE unless AUTHORIZED !
-    next_TCOEFF_table_entry = 0;
+    next_TCOEFF_table_entry = 12'sh0;
+
+    iquant_eob = 1'b0;
+    idct_cur_block_layer_next = idct_cur_block_layer;
 
     playback_type_next = playback_type;
     Y_raster_order_counter_next = Y_raster_order_counter;
@@ -551,9 +562,10 @@ always_comb begin : decode_FSM_comb;
                     next_layer = piclayer_readCBP;
                 else begin  // if(saved_MTYPE_vec[0])  // finaly if somehow TCOEFF
                     next_layer = piclayer_readTCOEFF;
-                    next_TCOEFF_zigzag = 0; // Up to 64 TCOEFFS per block
+                    next_TCOEFF_zigzag = 6'h0; // Up to 64 TCOEFFS per block
                     // next_TCOEFF_count = 0; // up to 64 TCOEFFS per block
-                    next_block_layer = 0;  // up to 6 blocks per macroblock
+                    next_block_layer = 3'h0;  // up to 6 blocks per macroblock
+                    idct_cur_block_layer_next = 3'h0;   // just clear this too just to be sure
                     // there is no MTYPE where NONE are present.
                 end
             end    
@@ -564,28 +576,30 @@ always_comb begin : decode_FSM_comb;
                 countdown_next = 2; // Skip EOB
                 next_layer = piclayer_skipTCOEFF;
                 // next_TCOEFF_count = 0;
-                next_TCOEFF_zigzag = 0;
-                next_block_layer = saved_block_layer + 1;
+                next_TCOEFF_zigzag = 6'h0;
+                iquant_eob = 1'b1;
+                next_block_layer = saved_block_layer + 3'h1;
+                idct_cur_block_layer_next = saved_block_layer;  // Keep it one behind for the block layers...?
             end
             else if(TCOEFF_ESC) begin   // We have a Fixed-Length code on our hands... special protocols!
                 case (saved_QUANT[0])
                     1'b1 :  begin   // Quant ODD
                         case (BITQUEUE[35]) // Check sign
                             1'b0    :   begin   // LEVEL POSITIV
-                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)+1); // set CODE, signed
+                                next_TCOEFF_table_entry = saved_QUANT * ((FLC_level << 1)+1); // set CODE, signed
                             end
                             1'b1    :   begin   // LEVEL NEGATIVE
-                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)-1); // set CODE, signed
+                                next_TCOEFF_table_entry = saved_QUANT * ((FLC_level << 1)-1); // set CODE, signed
                             end
                         endcase
                     end
                     1'b0 :  begin   // QUANT EVEN
                         case (BITQUEUE[35]) // Check sign
                             1'b0    :   begin   // LEVEL POSITIV
-                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)+1) - 1; // set CODE, signed
+                                next_TCOEFF_table_entry = (saved_QUANT * ((FLC_level << 1)+1)) - 1; // set CODE, signed
                             end
                             1'b1    :   begin   // LEVEL NEGATIVE
-                                next_TCOEFF_table_entry = saved_QUANT * (((BITQUEUE[35:28])<< 1)-1) + 1; // set CODE, signed
+                                next_TCOEFF_table_entry = (saved_QUANT * ((FLC_level<< 1)-1)) + 1; // set CODE, signed
                             end
                         endcase
                     end
@@ -602,7 +616,7 @@ always_comb begin : decode_FSM_comb;
                                 next_TCOEFF_table_entry = saved_QUANT * ((TCOEFF_LEVEL << 1)+1); // set CODE, signed
                             end
                             1'b1    :   begin   // LEVEL NEGATIVE
-                                next_TCOEFF_table_entry = saved_QUANT * (((0 - TCOEFF_LEVEL)<< 1)-1); // set CODE, signed
+                                next_TCOEFF_table_entry = saved_QUANT * (((4'sh0 - TCOEFF_LEVEL)<< 1)-1); // set CODE, signed
                             end
                         endcase
                     end
@@ -612,7 +626,7 @@ always_comb begin : decode_FSM_comb;
                                 next_TCOEFF_table_entry = saved_QUANT * ((TCOEFF_LEVEL << 1)+1) - 1; // set CODE, signed
                             end
                             1'b1    :   begin   // LEVEL NEGATIVE
-                                next_TCOEFF_table_entry = saved_QUANT * (((0 - TCOEFF_LEVEL)<< 1)-1) + 1; // set CODE, signed
+                                next_TCOEFF_table_entry = saved_QUANT * (((4'sh0 - TCOEFF_LEVEL)<< 1)-1) + 1; // set CODE, signed
                             end
                         endcase
                     end
@@ -812,6 +826,29 @@ always_comb begin : decode_FSM_comb;
         default: ;
     endcase
 end
+
+    logic signed [11:0] iquant_level;   // Level to send into the IDCT, read out of the saved_TCOEFF_table.
+    logic iquant_eob;   // Send this when we're done sending all the coeffs?
+        // Assuming we send in raster-order?
+    logic iquant_valid; // treat this as a wren?
+
+    logic signed [8:0] idct_data;   // Output, 9bits (8 + 2scomplement) that should go straight to framebuffers?
+    logic idct_eob;     // Output - a signal that we're now at the end of the block on the output too..?
+    logic idct_valid;   // Output - a warning that data's coming! (RDEN for the receiving end, I suppose.)
+
+    // 8x8 Sram to IDCT
+
+    idct idct(
+    .clk(clk50), 
+    .clk_en(1'b1),
+    .rst(~reset), 
+    .iquant_level(iquant_level),                             // from rld
+    .iquant_eob(iquant_eob),                                 // from rld
+    .iquant_valid(iquant_valid),                             // from rld
+    .idct_data(idct_data),                                   // to idct_fifo
+    .idct_eob(idct_eob),                                     // to idct_fifo
+    .idct_valid(idct_valid)                                  // to idct_fifo
+    );
 
     // YUV output calculation for this crap
     logic [15:0] Y_raster_order_counter, Y_raster_order_counter_next;   // which pixel, in raster-order.
