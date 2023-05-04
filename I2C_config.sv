@@ -16,25 +16,28 @@ module I2C_config (
 	logic [3:0] counter_state = 0;
 	logic interface_acknowledge_state = 0;
 	
-	logic [7:0] volume = 90;
 	logic SW1_state = 1;
 	logic ack_state = 0;
 	
 	logic [5:0] clk50_counter = 0;
 	logic [5:0] pulselength = 50;
+	logic [6:0] volume = 0;
 	
 	//just trigger 
 	always_ff @ (posedge clk50) begin
 		counter_state <= counter_state;
 		interface_enable <= 1'b0;
+		volume <= volume;
 		//need rising edge of interface_acknowledge and being within correct range to increment/output data
-		if(interface_acknowledge == 1'b1 && interface_acknowledge_state == 1'b0 && counter_state < 11) begin
+		if(interface_acknowledge == 1'b1 && interface_acknowledge_state == 1'b0 && counter_state < 12) begin
 			interface_acknowledge_state <= 1'b1;
 			interface_enable <= 1'b1;
 		end
 		
 		if(interface_acknowledge == 1'b0 && interface_acknowledge_state == 1'b1) begin
-			counter_state <= counter_state + 1;
+			if(counter_state < 11) begin
+				counter_state <= counter_state + 1;
+			end
 			interface_acknowledge_state <= 1'b0;
 		end
 		
@@ -42,6 +45,20 @@ module I2C_config (
 			interface_acknowledge_state <= 1'b0;
 			counter_state <= 0;
 			interface_enable <= 1'b0;
+		end
+		
+		if(SW1 == 1 && SW1_state == 0) begin
+			SW1_state <= 1;
+			if(volume >= 120) begin
+				volume <= 0;
+			end
+			else begin
+				volume <= volume + 20;
+			end
+		end
+		
+		if(SW1 == 0 && SW1_state == 1) begin
+			SW1_state <= 0;
 		end
 	end
 	
@@ -103,9 +120,9 @@ module I2C_config (
 				i2c_address = 16'h0014;
 				i2c_data = 16'h555f;
 			end
-			11: begin//ending
-				i2c_address = 16'h0000;
-				i2c_data = 16'h0000;
+			11: begin//volume, continuously write at this address
+				i2c_address = 16'h0022; 
+				i2c_data = {1'b0, volume, 1'b0, volume};
 			end
 			default: ;
 		endcase

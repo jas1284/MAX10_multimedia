@@ -908,7 +908,8 @@ end
                 end
             end
             clear_table : begin
-                IDCT_load_state_next = wait_VLC;
+                if(!WAIT_IDCT)
+                    IDCT_load_state_next = wait_VLC;
                 IDCT_load_index_next = 6'h0;    // clear out the index, redundant but safe
             end
             default: ;
@@ -954,6 +955,8 @@ end
         H261_Y_WREN = 1'b0;
         H261_Cb_WREN = 1'b0;
         H261_Cr_WREN = 1'b0;
+
+        WAIT_IDCT_clear = 1'b0;
         case (IDCT_unload_state)
             wait_IDCT :  begin
                 IDCT_unload_state_next = unload_to_buffer;  // not sure if this state even needs to exist
@@ -999,6 +1002,7 @@ end
             end
             unload_deassert : begin
                 if(~idct_eob)
+                    WAIT_IDCT_clear = 1'b1;
                     IDCT_unload_state_next = unload_to_buffer;
             end
             default: ;

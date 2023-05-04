@@ -20,9 +20,7 @@ module I2S_interface_R2 (
 	output logic I2S_DIN, //data input
 	input  logic I2S_LRCLK, //frame clock (input from master mode, 44.1 kHz)
 	input  logic I2S_SCLK, //bit clock (input from master mode, 64 * frame  clk rate)
-
-	input logic vol_sw_down,
-	input logic vol_sw_up,	
+	
 	
 	input  logic ADDR_load, // enable loading ADDR_start, not implemented for now
 	input  logic I2S_enable,
@@ -55,11 +53,7 @@ module I2S_interface_R2 (
 	assign hex_out_5 = READ_ADDR[23:20];
 
 	parameter BIT_DEPTH = 16;	// Assume this much, lol. We don't have a good way to deal with it otherwise!
-	logic [8:0] VOLUME_SHIFT;	// how many bits to shift to preserve hearing?
-	assign VOLUME_SHIFT[0] = 1'b1; 
-	assign VOLUME_SHIFT[1] = vol_sw_down;
-	assign VOLUME_SHIFT[2] = vol_sw_up;
-	assign VOLUME_SHIFT[8:3] = 6'h0;
+	parameter VOLUME_SHIFT = 1; // how many bits to shift to preserve hearing?
 
 	enum logic [12:0] 
     {q_shift, 

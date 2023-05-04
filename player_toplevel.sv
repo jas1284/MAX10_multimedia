@@ -219,8 +219,9 @@ module player_toplevel (
 	sync sync_2(.Clk(MAX10_CLK1_50), .d(SW[2]), .q(SW2_SYNC));
 	sync sync_1(.Clk(MAX10_CLK1_50), .d(SW[1]), .q(SW1_SYNC));
 	sync sync_0(.Clk(MAX10_CLK1_50), .d(SW[0]), .q(SW0_SYNC));	
-	logic KEY0_SYNC;
-	sync sync_rst(.Clk(MAX10_CLK1_50), .d(KEY[0]), .q(KEY0_SYNC));	
+	logic KEY0_SYNC, KEY1_SYNC;
+	sync sync_key0(.Clk(MAX10_CLK1_50), .d(KEY[0]), .q(KEY0_SYNC));	
+	sync sync_key1(.Clk(MAX10_CLK1_50), .d(KEY[1]), .q(KEY1_SYNC));
 	
 	assign {Reset_h}=~ (KEY0_SYNC); 
 
@@ -426,8 +427,6 @@ module player_toplevel (
 			.hex_out_2(HEX_NUM_2_AUD),
 			.hex_out_1(HEX_NUM_1_AUD),
 			.hex_out_0(HEX_NUM_0_AUD),
-			.vol_sw_down(SW8_SYNC),
-			.vol_sw_up(SW7_SYNC),
 			// VGA connections
     		.red(VGA_R_AUD),
     		.green(VGA_G_AUD),
@@ -443,7 +442,7 @@ module player_toplevel (
 			.i2c_data(i2c_data),
 			.interface_enable(interface_enable),
 			.interface_acknowledge(interface_acknowledge),
-			.SW1(SW[1])
+			.SW1(KEY1_SYNC)
 	);
 	
 	
