@@ -90,6 +90,17 @@ module player_toplevel (
 	logic i2c_serial_scl_in;         //              .scl_in
 	logic i2c_serial_sda_oe;         //              .sda_oe
 	logic i2c_serial_scl_oe;         //              .scl_oe
+
+	// These are for our benjamin's custom I2C init.
+	logic i2c_serial_sda_oe_not;         //              .sda_oe
+	logic i2c_serial_scl_oe_not;         //              .scl_oe
+	assign i2c_serial_sda_oe = ~i2c_serial_sda_oe_not;
+	assign i2c_serial_scl_oe = ~i2c_serial_scl_oe_not;
+	logic [15:0] i2c_address;
+	logic [15:0] i2c_data;
+	logic interface_enable;
+	logic interface_acknowledge;
+
 	logic [1:0] aud_mclk_ctr = 2'b00;
 	
 //=======================================================
@@ -221,7 +232,37 @@ module player_toplevel (
 	
 	//remember to rename the SOC as necessary
 	
-    ZFsoc u0 (
+    // ZFsoc u0 (
+	// 		.avalon_bridge_address     (AVL_BR_ADDR),     		//.avalon_bridge.address
+	// 		.avalon_bridge_byte_enable (2'b11), 					//.byte_enable
+	// 		.avalon_bridge_read        (AVL_BR_RDEN),        		//.read
+	// 		.avalon_bridge_write       (AVL_BR_WREN),       		//.write
+	// 		.avalon_bridge_write_data  (SD_MODULE_DATA),  			//.write_data
+	// 		.avalon_bridge_acknowledge (AVL_BR_ACK), 				//.acknowledge
+	// 		.avalon_bridge_read_data   (AVL_BR_RDDATA),   			//.read_data
+	// 		.clk_clk                   (MAX10_CLK1_50),             //.clk_clk
+	// 		.key_input_export          (KEY[1]),         			//.key_input.export
+	// 		.led_wire_export           (LEDR[5:0]),           		//.led_wire.export
+	// 		.reset_reset_n             (KEY0_SYNC),             		//.reset.reset_n
+	// 		//SDRAM
+	// 		.sdram_clk_100_clk			(DRAM_CLK),					//100mhz SDRAM clock! FAST BOI
+	// 		.sdram_wire_addr			(DRAM_ADDR),               	//sdram_wire.addr
+	// 		.sdram_wire_ba				(DRAM_BA),                	//.ba
+	// 		.sdram_wire_cas_n			(DRAM_CAS_N),              	//.cas_n
+	// 		.sdram_wire_cke				(DRAM_CKE),                 //.cke
+	// 		.sdram_wire_cs_n			(DRAM_CS_N),                //.cs_n
+	// 		.sdram_wire_dq				(DRAM_DQ),                  //.dq
+	// 		.sdram_wire_dqm				({DRAM_UDQM,DRAM_LDQM}),    //.dqm
+	// 		.sdram_wire_ras_n			(DRAM_RAS_N),              	//.ras_n
+	// 		.sdram_wire_we_n			(DRAM_WE_N),                //.we_n
+	// 		.switch_input_export       	(SW),        					//.switch_input.export
+	// 		// .i2c_serial_sda_in(i2c_serial_sda_in),
+	// 		// .i2c_serial_scl_in(i2c_serial_scl_in),
+	// 		// .i2c_serial_sda_oe(i2c_serial_sda_oe),
+	// 		// .i2c_serial_scl_oe(i2c_serial_scl_oe)
+	// );
+
+	ZFsocNOCPU u0 (
 			.avalon_bridge_address     (AVL_BR_ADDR),     		//.avalon_bridge.address
 			.avalon_bridge_byte_enable (2'b11), 					//.byte_enable
 			.avalon_bridge_read        (AVL_BR_RDEN),        		//.read
@@ -230,8 +271,6 @@ module player_toplevel (
 			.avalon_bridge_acknowledge (AVL_BR_ACK), 				//.acknowledge
 			.avalon_bridge_read_data   (AVL_BR_RDDATA),   			//.read_data
 			.clk_clk                   (MAX10_CLK1_50),             //.clk_clk
-			.key_input_export          (KEY[1]),         			//.key_input.export
-			.led_wire_export           (LEDR[5:0]),           		//.led_wire.export
 			.reset_reset_n             (KEY0_SYNC),             		//.reset.reset_n
 			//SDRAM
 			.sdram_clk_100_clk			(DRAM_CLK),					//100mhz SDRAM clock! FAST BOI
@@ -244,11 +283,10 @@ module player_toplevel (
 			.sdram_wire_dqm				({DRAM_UDQM,DRAM_LDQM}),    //.dqm
 			.sdram_wire_ras_n			(DRAM_RAS_N),              	//.ras_n
 			.sdram_wire_we_n			(DRAM_WE_N),                //.we_n
-			.switch_input_export       	(SW),        					//.switch_input.export
-			.i2c_serial_sda_in(i2c_serial_sda_in),
-			.i2c_serial_scl_in(i2c_serial_scl_in),
-			.i2c_serial_sda_oe(i2c_serial_sda_oe),
-			.i2c_serial_scl_oe(i2c_serial_scl_oe)
+			// .i2c_serial_sda_in(i2c_serial_sda_in),
+			// .i2c_serial_scl_in(i2c_serial_scl_in),
+			// .i2c_serial_sda_oe(i2c_serial_sda_oe),
+			// .i2c_serial_scl_oe(i2c_serial_scl_oe)
 	);
 	 
 	// assign LEDR[8] = RAM_INIT_DONE_SIG;
@@ -388,6 +426,8 @@ module player_toplevel (
 			.hex_out_2(HEX_NUM_2_AUD),
 			.hex_out_1(HEX_NUM_1_AUD),
 			.hex_out_0(HEX_NUM_0_AUD),
+			.vol_sw_down(SW8_SYNC),
+			.vol_sw_up(SW7_SYNC),
 			// VGA connections
     		.red(VGA_R_AUD),
     		.green(VGA_G_AUD),
@@ -395,6 +435,30 @@ module player_toplevel (
     		.hsync(VGA_HS_AUD),
     		.vsync(VGA_VS_AUD)
 	 );
+
+	I2C_config reginit(
+			.clk50(MAX10_CLK1_50),
+			.reset(Reset_h),
+			.i2c_address(i2c_address),
+			.i2c_data(i2c_data),
+			.interface_enable(interface_enable),
+			.interface_acknowledge(interface_acknowledge),
+			.SW1(SW[1])
+	);
+	
+	
+	I2C_interface sgtlconfig(
+			.clk50(MAX10_CLK1_50),
+			.reset_interface(Reset_h),
+			.i2c_addr(i2c_address),
+			.i2c_data(i2c_data),
+			.enable(interface_enable),
+			.acknowledge(interface_acknowledge),
+			
+			.i2c_scl(i2c_serial_scl_oe_not),
+			.i2c_sda(i2c_serial_sda_oe_not),
+			.sda_in(i2c_serial_sda_in)
+	);
 
 
 endmodule

@@ -1,0 +1,71 @@
+Info: Starting: Create block symbol file (.bsf)
+Info: qsys-generate C:\Users\Jas1284\Documents\ECE385\FINALPROJ\FPSP23-ZF-BASIC\ZFsocNOCPU.qsys --block-symbol-file --output-directory=C:\Users\Jas1284\Documents\ECE385\FINALPROJ\FPSP23-ZF-BASIC\ZFsocNOCPU --family="MAX 10" --part=10M50DAF484C7G
+Progress: Loading FPSP23-ZF-BASIC/ZFsocNOCPU.qsys
+Progress: Reading input file
+Progress: Adding bridge_0 [altera_up_external_bus_to_avalon_bridge 18.0]
+Progress: Parameterizing module bridge_0
+Progress: Adding clk_0 [clock_source 18.1]
+Progress: Parameterizing module clk_0
+Progress: Adding sdram [altera_avalon_new_sdram_controller 18.1]
+Progress: Parameterizing module sdram
+Progress: Adding sdram_pll [altpll 18.1]
+Progress: Parameterizing module sdram_pll
+Progress: Building connections
+Progress: Parameterizing connections
+Progress: Validating
+Progress: Done reading input file
+Info: ZFsocNOCPU.sdram: SDRAM Controller will only be supported in Quartus Prime Standard Edition in the future release.
+Warning: ZFsocNOCPU.sdram_pll: sdram_pll.pll_slave must be connected to an Avalon-MM master
+Info: qsys-generate succeeded.
+Info: Finished: Create block symbol file (.bsf)
+Info: 
+Info: Starting: Create HDL design files for synthesis
+Info: qsys-generate C:\Users\Jas1284\Documents\ECE385\FINALPROJ\FPSP23-ZF-BASIC\ZFsocNOCPU.qsys --synthesis=VERILOG --output-directory=C:\Users\Jas1284\Documents\ECE385\FINALPROJ\FPSP23-ZF-BASIC\ZFsocNOCPU\synthesis --family="MAX 10" --part=10M50DAF484C7G
+Progress: Loading FPSP23-ZF-BASIC/ZFsocNOCPU.qsys
+Progress: Reading input file
+Progress: Adding bridge_0 [altera_up_external_bus_to_avalon_bridge 18.0]
+Progress: Parameterizing module bridge_0
+Progress: Adding clk_0 [clock_source 18.1]
+Progress: Parameterizing module clk_0
+Progress: Adding sdram [altera_avalon_new_sdram_controller 18.1]
+Progress: Parameterizing module sdram
+Progress: Adding sdram_pll [altpll 18.1]
+Progress: Parameterizing module sdram_pll
+Progress: Building connections
+Progress: Parameterizing connections
+Progress: Validating
+Progress: Done reading input file
+Info: ZFsocNOCPU.sdram: SDRAM Controller will only be supported in Quartus Prime Standard Edition in the future release.
+Warning: ZFsocNOCPU.sdram_pll: sdram_pll.pll_slave must be connected to an Avalon-MM master
+Info: ZFsocNOCPU: Generating ZFsocNOCPU "ZFsocNOCPU" for QUARTUS_SYNTH
+Info: Interconnect is inserted between master bridge_0.avalon_master and slave sdram.s1 because the master has address signal 26 bit wide, but the slave is 25 bit wide.
+Info: Interconnect is inserted between master bridge_0.avalon_master and slave sdram.s1 because they have different clock source.
+Info: Inserting clock-crossing logic between cmd_demux.src0 and cmd_mux.sink0
+Info: Inserting clock-crossing logic between rsp_demux.src0 and rsp_mux.sink0
+Info: bridge_0: Starting Generation of External Bus to Avalon Bridge
+Info: bridge_0: "ZFsocNOCPU" instantiated altera_up_external_bus_to_avalon_bridge "bridge_0"
+Info: sdram: Starting RTL generation for module 'ZFsocNOCPU_sdram'
+Info: sdram:   Generation command is [exec C:/intelfpga_lite/18.1/quartus/bin64/perl/bin/perl.exe -I C:/intelfpga_lite/18.1/quartus/bin64/perl/lib -I C:/intelfpga_lite/18.1/quartus/sopc_builder/bin/europa -I C:/intelfpga_lite/18.1/quartus/sopc_builder/bin/perl_lib -I C:/intelfpga_lite/18.1/quartus/sopc_builder/bin -I C:/intelfpga_lite/18.1/quartus/../ip/altera/sopc_builder_ip/common -I C:/intelfpga_lite/18.1/quartus/../ip/altera/sopc_builder_ip/altera_avalon_new_sdram_controller -- C:/intelfpga_lite/18.1/quartus/../ip/altera/sopc_builder_ip/altera_avalon_new_sdram_controller/generate_rtl.pl --name=ZFsocNOCPU_sdram --dir=C:/Users/Jas1284/AppData/Local/Temp/alt9481_3229172944686773762.dir/0003_sdram_gen/ --quartus_dir=C:/intelfpga_lite/18.1/quartus --verilog --config=C:/Users/Jas1284/AppData/Local/Temp/alt9481_3229172944686773762.dir/0003_sdram_gen//ZFsocNOCPU_sdram_component_configuration.pl  --do_build_sim=0  ]
+Info: sdram: Done RTL generation for module 'ZFsocNOCPU_sdram'
+Info: sdram: "ZFsocNOCPU" instantiated altera_avalon_new_sdram_controller "sdram"
+Info: sdram_pll: "ZFsocNOCPU" instantiated altpll "sdram_pll"
+Info: avalon_st_adapter: Inserting error_adapter: error_adapter_0
+Info: mm_interconnect_0: "ZFsocNOCPU" instantiated altera_mm_interconnect "mm_interconnect_0"
+Info: rst_controller: "ZFsocNOCPU" instantiated altera_reset_controller "rst_controller"
+Info: bridge_0_avalon_master_translator: "mm_interconnect_0" instantiated altera_merlin_master_translator "bridge_0_avalon_master_translator"
+Info: sdram_s1_translator: "mm_interconnect_0" instantiated altera_merlin_slave_translator "sdram_s1_translator"
+Info: bridge_0_avalon_master_agent: "mm_interconnect_0" instantiated altera_merlin_master_agent "bridge_0_avalon_master_agent"
+Info: sdram_s1_agent: "mm_interconnect_0" instantiated altera_merlin_slave_agent "sdram_s1_agent"
+Info: sdram_s1_agent_rsp_fifo: "mm_interconnect_0" instantiated altera_avalon_sc_fifo "sdram_s1_agent_rsp_fifo"
+Info: router: "mm_interconnect_0" instantiated altera_merlin_router "router"
+Info: router_001: "mm_interconnect_0" instantiated altera_merlin_router "router_001"
+Info: cmd_demux: "mm_interconnect_0" instantiated altera_merlin_demultiplexer "cmd_demux"
+Info: cmd_mux: "mm_interconnect_0" instantiated altera_merlin_multiplexer "cmd_mux"
+Info: rsp_mux: "mm_interconnect_0" instantiated altera_merlin_multiplexer "rsp_mux"
+Info: Reusing file C:/Users/Jas1284/Documents/ECE385/FINALPROJ/FPSP23-ZF-BASIC/ZFsocNOCPU/synthesis/submodules/altera_merlin_arbitrator.sv
+Info: crosser: "mm_interconnect_0" instantiated altera_avalon_st_handshake_clock_crosser "crosser"
+Info: avalon_st_adapter: "mm_interconnect_0" instantiated altera_avalon_st_adapter "avalon_st_adapter"
+Info: error_adapter_0: "avalon_st_adapter" instantiated error_adapter "error_adapter_0"
+Info: ZFsocNOCPU: Done "ZFsocNOCPU" with 19 modules, 27 files
+Info: qsys-generate succeeded.
+Info: Finished: Create HDL design files for synthesis

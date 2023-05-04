@@ -20,7 +20,7 @@
  * fifo with common clock for read and write port.
  */
 
-`include "timescale.v"
+//`include "timescale.v"
 
 module xfifo_sc (
 	clk,

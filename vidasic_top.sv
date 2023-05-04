@@ -280,13 +280,20 @@ logic [5:0] saved_MBA, next_MBA;
 logic [3:0] saved_MTYPE_vec, next_MTYPE_vec;
 // logic [5:0] saved_TCOEFF_count, next_TCOEFF_count;
 logic [2:0] saved_block_layer, next_block_layer;
-logic signed [11:0] saved_TCOEFF_table [64];
-logic signed [11:0] next_TCOEFF_table_entry;
 logic [5:0] saved_TCOEFF_zigzag, next_TCOEFF_zigzag;
-logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
 logic signed [7:0] FLC_level;
 assign FLC_level = BITQUEUE[35:28];
-logic [3:0] idct_cur_block_layer, idct_cur_block_layer_next;
+
+logic [3:0] idct_cur_block_layer, idct_cur_block_layer_next;    // Which block layer is the IDCT currently working on?
+logic WAIT_IDCT, WAIT_IDCT_next, WAIT_IDCT_set, WAIT_IDCT_clear;    // Flag determining if waiting for IDCT. Set by decode FSM, cleared by IDCT output.
+always_comb begin : WAIT_IDCT_logic
+    if(WAIT_IDCT_set)
+        WAIT_IDCT_next = 1'b1;
+    else if (WAIT_IDCT_clear)
+        WAIT_IDCT_next = 1'b0;
+    else
+        WAIT_IDCT_next = WAIT_IDCT;
+end
 
 logic [3:0] playback_type_next, playback_type; // Keep track of the type of playback
 // logic [7:0] SRAM_WRDATA, SRAM_WRDATA_next;   // the input should already be buffered... sus.
@@ -297,8 +304,6 @@ assign hex_out_0 = playback_type;
 // FF Logic for the big-bloody-state-machine!
 always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
     if(reset) begin
-        for(int i = 0; i < 64; i++)
-            saved_TCOEFF_table[i] <= 8'b0;
         saved_TCOEFF_zigzag <= 6'h0;
         saved_block_layer <= 3'h0;
         // saved_TCOEFF_count <= 0;
@@ -311,6 +316,7 @@ always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
         countdown <= 6'h0;
 
         idct_cur_block_layer <= 3'h0;
+        WAIT_IDCT <= 1'b0;
 
         playback_type <= 4'h0;
         Y_raster_order_counter <= 16'h0;
@@ -322,8 +328,6 @@ always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
         stalltime <= 5'h0;
     end
     else if (Q_RDY & run) begin   // Only run if the queue is ready-to-go!
-        if(next_TCOEFF_table_WREN)
-            saved_TCOEFF_table[dezigzag_raster_out] <= next_TCOEFF_table_entry;
         saved_TCOEFF_zigzag <= next_TCOEFF_zigzag;
         saved_block_layer <= next_block_layer;
         // saved_TCOEFF_count <= next_TCOEFF_count;
@@ -336,6 +340,7 @@ always_ff @( posedge clk50 or posedge reset ) begin : decode_FSM_ff
         countdown <= countdown_next;
         
         idct_cur_block_layer <= idct_cur_block_layer_next;
+        WAIT_IDCT <= WAIT_IDCT_next;
 
         playback_type <= playback_type_next;
         Y_raster_order_counter <= Y_raster_order_counter_next;
@@ -373,8 +378,9 @@ always_comb begin : decode_FSM_comb;
     next_TCOEFF_table_WREN = 1'b0; // don't write to TCOEFF TABLE unless AUTHORIZED !
     next_TCOEFF_table_entry = 12'sh0;
 
-    iquant_eob = 1'b0;
+    // iquant_eob = 1'b0;
     idct_cur_block_layer_next = idct_cur_block_layer;
+    WAIT_IDCT_set = 1'b0;
 
     playback_type_next = playback_type;
     Y_raster_order_counter_next = Y_raster_order_counter;
@@ -577,9 +583,9 @@ always_comb begin : decode_FSM_comb;
                 next_layer = piclayer_skipTCOEFF;
                 // next_TCOEFF_count = 0;
                 next_TCOEFF_zigzag = 6'h0;
-                iquant_eob = 1'b1;
                 next_block_layer = saved_block_layer + 3'h1;
                 idct_cur_block_layer_next = saved_block_layer;  // Keep it one behind for the block layers...?
+                WAIT_IDCT_set = 1'b1;  // Set the wait flag, since the table is now full for this block.
             end
             else if(TCOEFF_ESC) begin   // We have a Fixed-Length code on our hands... special protocols!
                 case (saved_QUANT[0])
@@ -604,7 +610,7 @@ always_comb begin : decode_FSM_comb;
                         endcase
                     end
                 endcase
-                next_TCOEFF_zigzag = saved_TCOEFF_zigzag + BITQUEUE[41:36] + 1; // RUN
+                next_TCOEFF_zigzag = saved_TCOEFF_zigzag + BITQUEUE[41:36] + 6'h1; // RUN
                 next_TCOEFF_table_WREN = 1'b1;
                 countdown_next = 7'd20;    // Skip everything since we just did the whole ass FLC
             end 
@@ -647,13 +653,15 @@ always_comb begin : decode_FSM_comb;
                 end
             end
             else begin  // done? ok, decision time
-                next_layer = piclayer_readTCOEFF;
-                if(saved_block_layer >= 6) begin // If we just finished the last block...
-                    next_layer = piclayer_readMBA;
-                    if(saved_MBA >= 33) begin    // If we just finished the last MBA...
-                        next_layer = piclayer_readGBSC;
-                        if(saved_GN >= 5) begin // If we just finished the last GOB...
-                            next_layer = piclayer_readPSC;
+                if(!WAIT_IDCT) begin    // If waiting for IDCT, then we do nothing at all - need IDCT to finish first!
+                    next_layer = piclayer_readTCOEFF;
+                    if(saved_block_layer >= 6) begin // If we just finished the last block...
+                        next_layer = piclayer_readMBA;
+                        if(saved_MBA >= 33) begin    // If we just finished the last MBA...
+                            next_layer = piclayer_readGBSC;
+                            if(saved_GN >= 5) begin // If we just finished the last GOB...
+                                next_layer = piclayer_readPSC;
+                            end
                         end
                     end
                 end
@@ -826,6 +834,10 @@ always_comb begin : decode_FSM_comb;
         default: ;
     endcase
 end
+    logic signed [11:0] saved_TCOEFF_table [64];
+    logic signed [11:0] next_TCOEFF_table_entry;
+    logic next_TCOEFF_table_WREN; // write-enable to this crazy regfile
+    logic [5:0] IDCT_load_index, IDCT_load_index_next;
 
     logic signed [11:0] iquant_level;   // Level to send into the IDCT, read out of the saved_TCOEFF_table.
     logic iquant_eob;   // Send this when we're done sending all the coeffs?
@@ -837,6 +849,71 @@ end
     logic idct_valid;   // Output - a warning that data's coming! (RDEN for the receiving end, I suppose.)
 
     // 8x8 Sram to IDCT
+    enum logic [5:0] {wait_VLC,
+                    load_to_IDCT,
+                    load_deassert,
+                    clear_table} IDCT_load_state, IDCT_load_state_next;
+
+
+    always_ff @( posedge clk50  or posedge reset ) begin : IDCT_Loader_FSM_ff;
+        if(reset) begin
+            for(int i = 0; i < 64; i++)
+                saved_TCOEFF_table[i] <= 12'sh0;
+            IDCT_load_state <= wait_VLC;
+            IDCT_load_index <= 6'h0;
+        end
+        else if(Q_RDY & run) begin
+            if(next_TCOEFF_table_WREN & (WAIT_IDCT == 1'b0))   // If we're not waiting to IDCT, then we're still writing.
+                saved_TCOEFF_table[dezigzag_raster_out] <= next_TCOEFF_table_entry;
+            else if(IDCT_load_state == clear_table) begin   // clear the whole 8x8 table
+                for(int i = 0; i < 64; i++)
+                    saved_TCOEFF_table[i] <= 12'sh0;
+            end
+            IDCT_load_state <= IDCT_load_state_next;
+            IDCT_load_index <= IDCT_load_index_next;
+        end
+    end
+
+    always_comb begin : IDCT_Loader_FSM_comb;
+        IDCT_load_index_next = IDCT_load_index;
+        IDCT_load_state_next = IDCT_load_state;
+        iquant_level = 12'sh0;
+        iquant_valid = 1'b0;    // effectively WREN - set as 0
+        iquant_eob = 1'b0;  // Tells the IDCT if we sent the last in block or not. 
+        case (IDCT_load_state)
+            wait_VLC :  begin
+                IDCT_load_index_next = 6'h0;
+                if(WAIT_IDCT) begin     // Now waiting for US to run!
+                    IDCT_load_state_next = load_to_IDCT;
+                end
+            end
+            load_to_IDCT : begin
+                IDCT_load_state_next = load_deassert;
+                iquant_level = saved_TCOEFF_table[IDCT_load_index]; // send that one over
+                iquant_valid = 1'b0;    // Set invalid, to hit set-up time requirement?
+                if(IDCT_load_index == 6'd63)    // If we're loading the last one
+                    iquant_eob = 1'b1;
+            end
+            load_deassert : begin
+                iquant_level = saved_TCOEFF_table[IDCT_load_index]; // send that one over
+                iquant_valid = 1'b1;    // Set valid after holding everything for 1 cycle, just to be sure?
+                if(IDCT_load_index == 6'd63) begin    // If we're loading the last one
+                    iquant_eob = 1'b1;
+                    IDCT_load_index_next = 6'h0;    // clear that out
+                    IDCT_load_state_next = clear_table;
+                end
+                else begin
+                    IDCT_load_index_next = IDCT_load_index + 6'h1;  // Increment the load index
+                    IDCT_load_state_next = load_to_IDCT;
+                end
+            end
+            clear_table : begin
+                IDCT_load_state_next = wait_VLC;
+                IDCT_load_index_next = 6'h0;    // clear out the index, redundant but safe
+            end
+            default: ;
+        endcase
+    end
 
     idct idct(
     .clk(clk50), 
@@ -849,6 +926,120 @@ end
     .idct_eob(idct_eob),                                     // to idct_fifo
     .idct_valid(idct_valid)                                  // to idct_fifo
     );
+
+    // 8x8 IDCT to FRAMEBUFFER
+    enum logic [5:0] {wait_IDCT,
+                    unload_to_buffer,
+                    unload_deassert} IDCT_unload_state, IDCT_unload_state_next;
+    logic [5:0] IDCT_unload_index, IDCT_unload_index_next;
+
+    always_ff @( posedge clk50  or posedge reset ) begin : IDCT_UNLoader_FSM_ff;
+        if(reset) begin
+            IDCT_unload_state <= wait_IDCT;
+            IDCT_unload_index <= 6'h0;
+        end
+        else if(Q_RDY & run) begin
+            IDCT_unload_state <= IDCT_unload_state_next;
+            IDCT_unload_index <= IDCT_unload_index_next;
+        end
+    end
+
+    always_comb begin : IDCT_UNLoader_FSM_comb;
+        IDCT_unload_index_next = IDCT_unload_index;
+        IDCT_unload_state_next = IDCT_unload_state;
+        // Idct_data, idct_eob, idct_valid
+        H261_Y_WRDATA = 8'h0;
+        H261_Cb_WRDATA = 8'h0;
+        H261_Cr_WRDATA = 8'h0;
+        H261_Y_WREN = 1'b0;
+        H261_Cb_WREN = 1'b0;
+        H261_Cr_WREN = 1'b0;
+        case (IDCT_unload_state)
+            wait_IDCT :  begin
+                IDCT_unload_state_next = unload_to_buffer;  // not sure if this state even needs to exist
+                if(idct_valid) begin     // Now waiting for US to run!
+                    IDCT_unload_state_next = unload_to_buffer;
+                end
+            end
+            unload_to_buffer : begin
+                if(idct_valid) begin
+                    IDCT_unload_index_next = IDCT_unload_index + 6'h1;  // increment the address
+                    case(idct_cur_block_layer)
+                        3'h0 : begin    // block #0 in the macroblock
+                            H261_Y_WRDATA = idct_data[7:0];
+                            H261_Y_WREN = 1'b1;
+                        end
+                        3'h1 : begin
+                            H261_Y_WRDATA = idct_data[7:0];
+                            H261_Y_WREN = 1'b1;
+                        end
+                        3'h2 : begin
+                            H261_Y_WRDATA = idct_data[7:0];
+                            H261_Y_WREN = 1'b1;
+                        end
+                        3'h3 : begin
+                            H261_Y_WRDATA = idct_data[7:0];
+                            H261_Y_WREN = 1'b1;
+                        end
+                        3'h4 : begin
+                            H261_Cb_WRDATA = idct_data[7:0];
+                            H261_Cb_WREN = 1'b1;
+                        end
+                        3'h5 : begin
+                            H261_Cr_WRDATA = idct_data[7:0];
+                            H261_Cr_WREN = 1'b1;
+                        end
+                        default : ;     // Should never be a default value...?
+                    endcase
+                end
+                if(idct_eob) begin      // If we're un-loading the last one
+                    IDCT_unload_state_next = unload_deassert;
+                    IDCT_unload_index_next = 6'h0;
+                end
+            end
+            unload_deassert : begin
+                if(~idct_eob)
+                    IDCT_unload_state_next = unload_to_buffer;
+            end
+            default: ;
+        endcase
+    end
+
+    logic [6:0] H261_MBOFFSET;
+    logic [2:0] bl_x, bl_y; // Within-8x8 blocklayer coords
+    logic [3:0] Y_mb_x, Y_mb_y; // Y coords, within 16x16 Macroblock
+    logic [14:0] H261_Y_ADDR_MBOFFSET;
+    logic [11:0] H261_Cb_ADDR_MBOFFSET;
+    logic [11:0] H261_Cr_ADDR_MBOFFSET;
+    always_comb begin : write_MB_calculation;
+        H261_MBOFFSET = (saved_MBA + (((saved_GN - 3'h1) >> 1) * 33));
+        H261_Y_ADDR_MBOFFSET = H261_MBOFFSET << 8;
+        H261_Cb_ADDR_MBOFFSET = H261_MBOFFSET << 6;
+        H261_Cr_ADDR_MBOFFSET = H261_MBOFFSET << 6;
+        bl_x = IDCT_unload_index[2:0];  // X within the 8x8 block
+        bl_y = IDCT_unload_index >> 3;  // Y within the 8x8 block
+        case(idct_cur_block_layer[1:0])
+            2'h0 : begin
+                Y_mb_x = bl_x;
+                Y_mb_y = bl_y;
+            end
+            2'h1 : begin
+                Y_mb_x = bl_x + 8;
+                Y_mb_y = bl_y;
+            end
+            2'h2 : begin
+                Y_mb_x = bl_x;
+                Y_mb_y = bl_y + 8;
+            end
+            2'h3 : begin
+                Y_mb_x = bl_x + 8;
+                Y_mb_y = bl_y + 8;
+            end
+        endcase
+        H261_Y_ADDR = H261_Y_ADDR_MBOFFSET + (Y_mb_y << 4) + Y_mb_x;
+        H261_Cb_ADDR = H261_Cb_ADDR_MBOFFSET + (bl_y << 3) + bl_x;
+        H261_Cr_ADDR = H261_Cr_ADDR_MBOFFSET + (bl_y << 3) + bl_x;
+    end
 
     // YUV output calculation for this crap
     logic [15:0] Y_raster_order_counter, Y_raster_order_counter_next;   // which pixel, in raster-order.
@@ -1816,7 +2007,7 @@ end
 
 
 
-    always_comb begin : colorcalc
+    always_comb begin : colorcalc;
         if ((vga_x >= 527)|(vga_y >= 431)) begin // 527 = 176 * 3 -1, 431 = 144*3 - 1.
             calc_red = 10'sh0;    // Basically zero it out if we're beyond the video box. 
             calc_green = 10'sh0;
@@ -1828,7 +2019,7 @@ end
             calc_blue = ((149 * VGA_Y_RDDATA_minus16) >>> 7) + ((129 * VGA_Cb_RDDATA_minus128) >>> 6);
         end
     end
-    always_comb begin : colorclipred
+    always_comb begin : colorclip;
         if(calc_red > 10'sd255)
             calc_red_clipped = 8'd255;
         else if (calc_red < 10'sd0) begin
