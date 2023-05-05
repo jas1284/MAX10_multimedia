@@ -247,12 +247,12 @@ module I2S_interface_R2 (
 	end
 
 
-	always_ff @( posedge clk50 or posedge reset ) begin
+	always_ff @( posedge clk50 or posedge reset ) begin : shiftsig_ff
 		if(reset) begin
 			shiftsig <= 1'b0;
 		end
 		else begin
-			shiftsig <= shiftsig_next;
+			shiftsig <= shiftsig_next;	// Shiftsig/next allows us to generate coherent and sufficiently long shifting signals for the bitqueue.
 		end
 	end
 
@@ -301,7 +301,7 @@ module I2S_interface_R2 (
 
 	assign hex_out_0 = playback_type;
 
-	always_comb begin
+	always_comb begin : I2S_FSM_COMB; 	// The big-boi do-everything FSM combinational logic block for I2S state machine.
 		// default values;
 		I2S_DIN = 1'b0;
 		// shiftsig_next = 1'b0;
@@ -701,7 +701,7 @@ module I2S_interface_R2 (
 	// Attempt to make the logic more robust by having the go signal persist on a counter. 
 	logic [5:0] go_counter;
 
-	always_ff @ (posedge clk50 or posedge reset) begin
+	always_ff @ (posedge clk50 or posedge reset) begin : I2S_go_counter_ff;
 		if (reset) begin
 			I2S_go <= 1'b0;
 			go_counter <= 6'd0;
@@ -721,7 +721,7 @@ module I2S_interface_R2 (
 		end
 	end
 
-	always_ff @ (negedge I2S_SCLK or posedge reset) begin
+	always_ff @ (negedge I2S_SCLK or posedge reset) begin : I2S_FSM_ff;
 		if(reset) begin
 			// LRCLK_saved <= 1'b0;
 			// I2S_DIN <= 1'b0;
@@ -750,7 +750,7 @@ module I2S_interface_R2 (
 	assign ulaw_bottom_nibble = ulaw_byte[3:0];
 	logic g711_calc;
 
-	always_comb begin
+	always_comb begin	: 	g711_decode_fsm_comb;
 		g711_sample_next = g711_sample;
 		g711_CALC_STATE_next = g711_CALC_STATE;
 		case (g711_CALC_STATE) 
@@ -884,7 +884,7 @@ module I2S_interface_R2 (
 		endcase
 	end
 
-	always_ff @ (posedge clk50 or posedge reset) begin
+	always_ff @ (posedge clk50 or posedge reset) begin : g711_decode_fsm_ff;	
 		if (reset) begin
 			g711_sample <= 14'h0;
 			g711_CALC_STATE <= 1'b0;
@@ -912,7 +912,7 @@ module I2S_interface_R2 (
 
 	shortint step_VOX, step_VOX_next;
 
-	always_comb begin
+	always_comb begin : ADPCM_VOX_fsm_comb;
 		diff_VOX = 0;
 		ADPCM_CALC_VOX_STATE_next = ADPCM_CALC_VOX_STATE;
 		step_VOX_next = step_VOX;
@@ -966,7 +966,7 @@ module I2S_interface_R2 (
 		endcase
 	end
 
-	always_ff @ (posedge clk50 or posedge reset) begin
+	always_ff @ (posedge clk50 or posedge reset) begin : ADPCM_VOX_fsm_ff;
 		if (reset) begin
 			ADPCM_SAMPLE_VOX <= 0;
 			// ADPCM_PREVSAMPLE_VOX <= 0;
@@ -997,7 +997,7 @@ module I2S_interface_R2 (
 	assign IMA_nibble_signed = IMA_nibble;
 	logic IMA_nibble_high, IMA_nibble_high_next;
 
-	always_comb begin	// for IMA-WAV,we need to playback low nibble before high nibble. 
+	always_comb begin : IMA_adpcm_nibble_selector;	// for IMA-WAV,we need to playback low nibble before high nibble. 
 		case (IMA_nibble_high)
 			1'b1 : begin
 				IMA_nibble = nibble;
@@ -1011,8 +1011,8 @@ module I2S_interface_R2 (
 
 	shortint step_IMA, step_IMA_next;
 
-	always_comb begin
-		diff_IMA = 0;
+	always_comb begin : IMA_adpcm_fsm_comb;
+		diff_IMA = 1'b0;
 		ADPCM_CALC_IMA_STATE_next = ADPCM_CALC_IMA_STATE;
 		step_IMA_next = step_IMA;
 		// ADPCM_PREVSAMPLE_IMA_next = ADPCM_PREVSAMPLE_IMA;
@@ -1067,7 +1067,7 @@ module I2S_interface_R2 (
 		endcase
 	end
 
-	always_ff @ (posedge clk50 or posedge reset) begin
+	always_ff @ (posedge clk50 or posedge reset) begin : IMA_adpcm_fsm_ff;
 		if (reset) begin
 			ADPCM_SAMPLE_IMA <= 0;
 			// ADPCM_PREVSAMPLE_IMA <= 0;
@@ -1112,28 +1112,31 @@ module I2S_interface_R2 (
 
 	logic [7:0] curpix_idx;
 	logic [7:0] curpix_sample;
+	// 80 saved samples, so... 640/8 = determines which sample this pixel belongs to.
+	// calculate with respect to the current sample being saved, due to circular nature.
 	assign curpix_idx = ((vga_x >> 3) + cur_sample_counter + 1) % 80;
+	// I dont know why this creates a scrolling display, but I'm not complaining. I totally meant to do that.
 	assign curpix_sample = saved_samples[curpix_idx];
-	always_comb begin
+	always_comb begin : visualizer_draw_bars;	// Draw the samples as bars!
 		calc_red = 4'h0;
 		calc_green = 4'h0;
 		calc_blue = 4'h0;
 		case (curpix_sample[7]) // check sign of sample
 			1'b1 : begin
 				if((vga_y >= (10'd112 + curpix_sample[6:0])) && (vga_y <= 10'd240) && (curpix_sample[6:0] != 7'h0)) begin
-					calc_green = 4'hF;
+					calc_green = 4'hF;	// If the sample was negative: draw the rectangle going down
 				end
 			end
 			1'b0 : begin
 				if((vga_y <= (10'd240 + curpix_sample)) & (vga_y >= 10'd240)) begin
-					calc_green = 4'hF;
+					calc_green = 4'hF;	// If the sample was positive: draw the rectangle going up
 				end
 			end
 			default: ;
 		endcase
 	end
 
-	always_ff @( posedge vga_clk or posedge reset ) begin 
+	always_ff @( posedge vga_clk or posedge reset ) begin : visualizer_color_set;
         if(reset) begin
             red <= 4'h0;
             green <= 4'h0;
@@ -1151,8 +1154,11 @@ module I2S_interface_R2 (
         end
     end
 
+
+	// Visualizer logic - stores a couple samples in a circular buffer,
+	// displays the values in the circular buffer sequentially.
 	logic [7:0] pcm_sample;
-	always_ff @ (posedge clk50 or posedge reset) begin
+	always_ff @ (posedge clk50 or posedge reset) begin : pcm_sample_saver_ff;
 		if(reset) begin
 			pcm_sample <= 8'h0;
 		end
@@ -1162,7 +1168,7 @@ module I2S_interface_R2 (
 	end
 
 	logic [7:0] sample_to_save;
-	always_comb begin
+	always_comb begin : visualizer_sample_selector;	// Selects the samples to save into sample buffer
 		case (playback_type)
 			4'h1 : sample_to_save = pcm_sample;
 			4'h2 : sample_to_save = g711_sample[13:6];
@@ -1175,7 +1181,7 @@ module I2S_interface_R2 (
 
 	logic [7:0] cur_sample_counter;
 	logic [7:0] saved_samples[80];	// Used as a circular buffer to keep track of 80 most recent samples. 
-	always_ff @( posedge vsync or posedge reset) begin
+	always_ff @( posedge vsync or posedge reset) begin : visualizer_sample_saver; 	// Saves samples to the buffer
 		if (reset) 
 			cur_sample_counter <= 8'h0;
 		else begin
