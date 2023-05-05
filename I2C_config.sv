@@ -1,3 +1,8 @@
+// Module for storing and writing the intial configurations for the audio registers on the SGTL5000 and continually updating volume
+// Takes input of clk, reset, an acknowledge from the I2C_interface, and a switch or button. Upon program startup or reset, it will
+// write to the registers so that audio is outputting from I2S to HP out, and it will continue to loop, updating volume through switch
+// input and writing it to the register on the SGTL5000.
+
 module I2C_config (
 	input  logic clk50,
 	input  logic reset,
@@ -33,21 +38,21 @@ module I2C_config (
 			interface_acknowledge_state <= 1'b1;
 			interface_enable <= 1'b1;
 		end
-		
+		//cycle through all the states (each state is just data to output for config
 		if(interface_acknowledge == 1'b0 && interface_acknowledge_state == 1'b1) begin
 			if(counter_state < 11) begin
 				counter_state <= counter_state + 1;
-			end
+			end//last state loops and constantly writes the value of volume to the I2C config
 			interface_acknowledge_state <= 1'b0;
 		end
 		
-		if(reset) begin
+		if(reset) begin //resets state to 0 and restarts the config cycle
 			interface_acknowledge_state <= 1'b0;
 			counter_state <= 0;
 			interface_enable <= 1'b0;
 		end
 		
-		if(SW1 == 1 && SW1_state == 0) begin
+		if(SW1 == 1 && SW1_state == 0) begin //switch edge detection for volume value update
 			SW1_state <= 1;
 			if(volume >= 120) begin
 				volume <= 0;
@@ -65,15 +70,16 @@ module I2C_config (
 	
 	
 	//i2c_address and i2c_data output
+	//See datasheet and report for specifics of what each write does, for the most part it is the same as provided code
+	//except changing a few minor values like # of bits per cycle
 	always_comb begin
 		i2c_address = 16'h0000;
 		i2c_data = 16'h0000;
 		case (counter_state) 
 			1: begin
-				//CHIP_PLL_CTRL register: 739b
+				//CHIP_PLL_CTRL register: 739b 
 				i2c_address = 16'h0032;
 				i2c_data = 16'h739b;
-				
 			end
 			2: begin
 				//CHIP_ANA_POWER register: 45fe
