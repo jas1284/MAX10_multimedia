@@ -45,7 +45,7 @@ HEX0 will show format being detected:
 - 1: H.261 (incomplete/inoperable, sadly)
 HEX5:HEX1 will show the current leftmost contents of the playback shift-register.
 
-AUDIO: Open your desired file in Audacity, export in one of 3 WAV formats:
+AUDIO: Open your desired file in Audacity, export in one of 3 WAV formats @ 44.1khz:
 - 16bit signed PCM
 - "U-law" (8bits mapping to 14bits)
 - "A-law" (8bits mapping to 13bits)

@@ -1936,7 +1936,7 @@ end
             // NTSC_prev <= NTSC_clk;
     end
     always_comb begin   // 2 cycles of assert just to be sure
-        if (counter_24fps >= 21'd1041666) begin
+        if (counter_24fps >= 21'd1042709) begin // 25mill/23.976
             counter_24fps_next = 21'h0;
             next_frame_24fps = 1'b1;
         end
@@ -1953,17 +1953,54 @@ end
 
     logic signed [9:0] calc_red, calc_green, calc_blue;
     logic [7:0] calc_red_clipped, calc_green_clipped, calc_blue_clipped;
+    logic [3:0] calc_red_roundup, calc_green_roundup, calc_blue_roundup;
 
-    always_ff @( posedge vga_clk or posedge reset ) begin 
+    always_comb begin : color_roundup_logic;
+        if((calc_red_clipped[7:4] < 4'hF)&&(calc_red_clipped[3])) begin
+            calc_red_roundup = calc_red_clipped[7:4] + 4'h1; 
+        end
+        else
+            calc_red_roundup = calc_red_clipped[7:4];
+
+        if((calc_green_clipped[7:4] < 4'hF)&&(calc_green_clipped[3])) begin
+            calc_green_roundup = calc_green_clipped[7:4] + 4'h1; 
+        end
+        else
+            calc_green_roundup = calc_green_clipped[7:4];
+
+        if((calc_blue_clipped[7:4] < 4'hF)&&(calc_blue_clipped[3])) begin
+            calc_blue_roundup = calc_blue_clipped[7:4] + 4'h1; 
+        end
+        else
+            calc_blue_roundup = calc_blue_clipped[7:4];
+    end
+
+    always_ff @( posedge vga_clk or posedge reset ) begin  : color_display_ff;
         if(reset) begin
             red <= 4'h0;
             green <= 4'h0;
             blue <= 4'h0;
         end
-        else if (vga_blank) begin
-            red <= calc_red_clipped[7:4];
-            green <= calc_green_clipped[7:4];
-            blue <= calc_blue_clipped[7:4];
+        else if (vga_blank) begin 
+            if(vga_x[0])begin   // Every other pixel tries to bullshit greater color range by "rounding-up"
+                case (calc_red_clipped[3])  // "round-up" only if the value demands it!
+                    1'b1 : red <= calc_red_roundup; 
+                    1'b0 : red <= calc_red_clipped[7:4];
+                endcase
+                case (calc_green_clipped[3])
+                    1'b1 : green <= calc_green_roundup; 
+                    1'b0 : green <= calc_green_clipped[7:4];
+                endcase
+                case (calc_blue_clipped[3])
+                    1'b1 : blue <= calc_blue_roundup; 
+                    1'b0 : blue <= calc_blue_clipped[7:4];
+                endcase
+            end
+            else begin
+                red <= calc_red_clipped[7:4];
+                green <= calc_green_clipped[7:4];
+                blue <= calc_blue_clipped[7:4];
+            end
         end
         else begin
             red <= 4'h0;
