@@ -1982,7 +1982,7 @@ end
             blue <= 4'h0;
         end
         else if (vga_blank) begin 
-            if(vga_x[0])begin   // Every other pixel tries to bullshit greater color range by "rounding-up"
+            if(vga_y[0])begin   // Every other pixel tries to bullshit greater color range by "rounding-up"
                 case (calc_red_clipped[3])  // "round-up" only if the value demands it!
                     1'b1 : red <= calc_red_roundup; 
                     1'b0 : red <= calc_red_clipped[7:4];
