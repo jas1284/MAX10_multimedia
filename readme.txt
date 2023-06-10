@@ -1,7 +1,11 @@
-HOW TO USE THIS PROJECT
+Uncompressed* Audio and Video playback on DE10-lite MAX10 FPGA board.
+Requires an arduino shield with microSD slot via SPI.
+(UIUC ECE385 SP23 final project)
 
+HOW TO USE THIS PROJECT
+Compile and run with Quartus Prime Lite 18.1.
 Simply open FP-ZUOFU-BASIC.qsf and compile. "player_toplevel" should be top level.
-Program the FPGA, no eclipse or nios needed. (Custom I2C module inits the SGTL5000!)
+Program the FPGA, no eclipse needed because no NIOS. (Custom I2C module inits the SGTL5000!)
 
 Load in your SDcard and hit reset. Enjoy!
 
