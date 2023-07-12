@@ -2,6 +2,9 @@ Uncompressed* Audio and Video playback on DE10-lite MAX10 FPGA board.
 Requires an arduino shield with microSD slot via SPI.
 (UIUC ECE385 SP23 final project)
 
+DEMO VIDEO:
+https://youtu.be/Ck-EtcvA4ko
+
 HOW TO USE THIS PROJECT
 Compile and run with Quartus Prime Lite 18.1.
 Simply open FP-ZUOFU-BASIC.qsf and compile. "player_toplevel" should be top level.
